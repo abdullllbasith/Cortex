@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { FormField } from './FormField'
 import { uploadToStorage } from '@/lib/supabase/client'
 import { FORM_MESSAGES } from '@/lib/forms/formConfig'
+import { toast } from '@/components/ui'
 
 export interface UploadedFile {
   name: string
@@ -39,8 +40,67 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function isImageType(type: string): boolean {
-  return type.startsWith('image/')
+function inferMimeFromName(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase()
+  if (!ext) return 'application/octet-stream'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {
+    return `image/${ext === 'jpg' ? 'jpeg' : ext}`
+  }
+  if (ext === 'pdf') return 'application/pdf'
+  return 'application/octet-stream'
+}
+
+function normalizeUploadedFile(value: unknown): UploadedFile | null {
+  if (!value) return null
+
+  if (typeof value === 'string') {
+    const name = value.split('/').pop()?.split('?')[0] ?? 'upload'
+    return {
+      name,
+      size: 0,
+      type: inferMimeFromName(name),
+      url: value,
+    }
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const url = typeof record.url === 'string' ? record.url : ''
+    if (!url) return null
+
+    const name =
+      typeof record.name === 'string'
+        ? record.name
+        : url.split('/').pop()?.split('?')[0] ?? 'upload'
+
+    return {
+      name,
+      size: typeof record.size === 'number' ? record.size : 0,
+      type: typeof record.type === 'string' ? record.type : inferMimeFromName(name),
+      url,
+      path: typeof record.path === 'string' ? record.path : undefined,
+    }
+  }
+
+  return null
+}
+
+function normalizeUploadedFiles(value: unknown, multiple: boolean): UploadedFile[] {
+  if (multiple) {
+    if (!Array.isArray(value)) return []
+    return value
+      .map((item) => normalizeUploadedFile(item))
+      .filter((item): item is UploadedFile => item != null)
+  }
+
+  const file = normalizeUploadedFile(value)
+  return file ? [file] : []
+}
+
+function isImageType(type: string | undefined, name?: string): boolean {
+  if (type?.startsWith('image/')) return true
+  if (name && /\.(jpe?g|png|gif|webp|svg)$/i.test(name)) return true
+  return inferMimeFromName(name ?? '').startsWith('image/')
 }
 
 export function FormFileUpload<T extends FieldValues>({
@@ -67,10 +127,11 @@ export function FormFileUpload<T extends FieldValues>({
         return FORM_MESSAGES.fileTooLarge(Math.round(maxSize / (1024 * 1024)))
       }
       if (fileTypes.length > 0) {
+        const mime = file.type || inferMimeFromName(file.name)
         const ok = fileTypes.some((t) => {
           if (t.startsWith('.')) return file.name.toLowerCase().endsWith(t.toLowerCase())
-          if (t.endsWith('/*')) return file.type.startsWith(t.replace('/*', '/'))
-          return file.type === t
+          if (t.endsWith('/*')) return mime.startsWith(t.replace('/*', '/'))
+          return mime === t
         })
         if (!ok) return FORM_MESSAGES.fileType
       }
@@ -84,11 +145,7 @@ export function FormFileUpload<T extends FieldValues>({
       name={name}
       control={control}
       render={({ field, fieldState }) => {
-        const files: UploadedFile[] = multiple
-          ? (Array.isArray(field.value) ? field.value : [])
-          : field.value
-            ? [field.value as UploadedFile]
-            : []
+        const files = normalizeUploadedFiles(field.value, multiple)
 
         const addFiles = async (incoming: FileList | File[]) => {
           const list = Array.from(incoming)
@@ -115,11 +172,13 @@ export function FormFileUpload<T extends FieldValues>({
               uploaded.push({
                 name: file.name,
                 size: file.size,
-                type: file.type,
+                type: file.type || inferMimeFromName(file.name),
                 url: result.publicUrl,
                 path: result.path,
               })
             } catch (e) {
+              const message = e instanceof Error ? e.message : 'Upload failed'
+              toast.error(message)
               console.error(e)
             } finally {
               setProgress((p) => {
@@ -229,7 +288,7 @@ export function FormFileUpload<T extends FieldValues>({
                     key={`${file.name}-${i}`}
                     className="flex items-center gap-3 rounded-lg border border-slate-100 dark:border-slate-800 p-2"
                   >
-                    {isImageType(file.type) ? (
+                    {isImageType(file.type, file.name) ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={file.url}

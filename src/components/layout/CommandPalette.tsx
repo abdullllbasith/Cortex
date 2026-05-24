@@ -18,12 +18,13 @@ import { cn } from '@/lib/utils'
 interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  fullScreen?: boolean
 }
 
 /* Navigation shortcuts */
 const navItems = [
   { label: 'Dashboard',      href: '/dashboard',     icon: LayoutDashboard },
-  { label: 'AI Assistant',   href: '/assistant',       icon: Bot },
+  { label: 'AI Executive Assistant', href: '/assistant',       icon: Bot },
   { label: 'Knowledge Base', href: '/knowledge',       icon: BookOpen },
   { label: 'Agents',         href: '/agents',          icon: Cpu },
   { label: 'Analytics',      href: '/analytics',       icon: BarChart3 },
@@ -49,7 +50,7 @@ const recentItems = [
   { label: 'Sales analytics report',     href: '/analytics/sales' },
 ]
 
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, fullScreen = false }: CommandPaletteProps) {
   const router = useRouter()
 
   const navigate = useCallback(
@@ -70,23 +71,28 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         <DialogPrimitive.Content
           aria-label="Command palette"
           className={cn(
-            'fixed left-1/2 top-[15vh] z-50 w-full max-w-[560px] -translate-x-1/2',
-            'rounded-xl border bg-white shadow-xl dark:bg-slate-900 dark:border-slate-800',
-            'border-slate-200',
-            'data-[state=open]:animate-scaleIn data-[state=closed]:animate-scaleOut',
-            'overflow-hidden',
+            'fixed z-50 overflow-hidden border bg-white shadow-xl dark:bg-slate-900 dark:border-slate-800 border-slate-200',
+            fullScreen
+              ? 'inset-0 rounded-none data-[state=open]:animate-fadeIn data-[state=closed]:animate-fadeOut'
+              : 'left-1/2 top-[15vh] w-full max-w-[560px] -translate-x-1/2 rounded-xl data-[state=open]:animate-scaleIn data-[state=closed]:animate-scaleOut',
           )}
         >
-          <Command shouldFilter loop className="flex flex-col">
-            {/* Search input */}
-            <div className="flex items-center gap-3 border-b border-slate-100 px-4 dark:border-slate-800">
+          <Command shouldFilter loop className="flex h-full flex-col">
+            <div className={cn(
+              'flex items-center gap-3 border-b border-slate-100 px-4 dark:border-slate-800',
+              fullScreen && 'pt-[env(safe-area-inset-top)]',
+            )}>
               <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               <Command.Input
                 placeholder="Search pages, actions, or customers…"
                 className={cn(
-                  'flex-1 bg-transparent py-3.5 text-sm outline-none',
+                  'command-palette-input flex-1 border-0 bg-transparent py-3.5 text-sm',
                   'text-slate-900 placeholder:text-slate-400',
                   'dark:text-slate-100 dark:placeholder:text-slate-500',
+                  'outline-none shadow-none ring-0',
+                  'focus:border-0 focus:outline-none focus:ring-0 focus:shadow-none',
+                  'focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none',
+                  fullScreen && 'py-4 text-base',
                 )}
               />
               <kbd className="flex shrink-0 items-center gap-0.5 rounded border border-slate-200 px-1.5 py-0.5 font-mono text-[10px] text-slate-400 dark:border-slate-700 dark:text-slate-500">
@@ -94,8 +100,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               </kbd>
             </div>
 
-            {/* Results */}
-            <Command.List className="max-h-[380px] overflow-y-auto p-2">
+            <Command.List className={cn(
+              'overflow-y-auto p-2',
+              fullScreen ? 'max-h-none flex-1' : 'max-h-[380px]',
+            )}>
               <Command.Empty className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">
                 No results found.
               </Command.Empty>

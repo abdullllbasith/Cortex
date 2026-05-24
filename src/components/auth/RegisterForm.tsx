@@ -9,9 +9,11 @@ import { useAppForm } from '@/lib/forms/formConfig'
 import { registerSchema, type RegisterFormValues } from '@/lib/auth/schemas'
 import { FormInput } from '@/components/forms'
 import { FormStepper, type FormStep } from '@/components/forms/FormStepper'
-import { signUpWithPassword } from '@/lib/supabase/auth'
 import { PasswordStrengthMeter } from './PasswordStrengthMeter'
+import { PasswordInput } from './PasswordInput'
 import { SlugField, PlanSelector } from './RegisterFields'
+import { Controller } from 'react-hook-form'
+import { FormField } from '@/components/forms/FormField'
 
 export function RegisterForm() {
   const router = useRouter()
@@ -26,7 +28,7 @@ export function RegisterForm() {
       password: '',
       companyName: '',
       slug: '',
-      plan: 'professional',
+      plan: 'starter',
     },
   })
 
@@ -35,16 +37,30 @@ export function RegisterForm() {
   const onComplete = form.handleSubmit(async (values) => {
     setError(null)
     try {
-      await signUpWithPassword(values.email, values.password, {
-        full_name: `${values.firstName} ${values.lastName}`,
-        first_name: values.firstName,
-        last_name: values.lastName,
-        tenant_name: values.companyName,
-        tenant_slug: values.slug,
-        tenant_id: values.slug,
-        plan: values.plan,
-        onboarding_complete: false,
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(values),
       })
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message ?? 'Registration failed')
+      }
+
+      const { useSessionStore } = await import('@/store/sessionStore')
+      useSessionStore.getState().setSession({
+        user: {
+          id: json.data.user.id,
+          email: json.data.user.email,
+          name: json.data.user.name,
+          role: json.data.user.role,
+        },
+        tenant: json.data.tenant,
+        permissions: json.data.permissions ?? ['*'],
+        accessToken: json.data.accessToken,
+      })
+
       router.push('/setup')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
@@ -65,7 +81,20 @@ export function RegisterForm() {
           </div>
           <FormInput name="email" label="Work email" type="email" required autoComplete="email" />
           <div>
-            <FormInput name="password" label="Password" type="password" required autoComplete="new-password" />
+            <Controller
+              name="password"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <FormField name="password" label="Password" required error={fieldState.error?.message}>
+                  <PasswordInput
+                    {...field}
+                    autoComplete="new-password"
+                    error={fieldState.error?.message}
+                    showErrorMessage={false}
+                  />
+                </FormField>
+              )}
+            />
             <PasswordStrengthMeter password={password ?? ''} />
           </div>
         </div>

@@ -8,36 +8,46 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   Menu,
   Search,
-  Bell,
   Sun,
   Moon,
   User,
   Settings,
   LogOut,
-  ChevronRight,
+  Zap,
 } from 'lucide-react'
 import { Avatar, Badge } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { getTitleFromPathname } from './nav-config'
 import { CommandPalette } from './CommandPalette'
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   SAIOS TopBar
-   ───────────────────────────────────────────────────────────────────────────── */
+import { NotificationDropdown } from '@/components/notifications/NotificationDropdown'
+import { useSessionStore } from '@/store/sessionStore'
+import { formatUserRole } from '@/lib/auth/displayUser'
+import { useDashboardGreeting } from '@/hooks/useDashboardGreeting'
 
 export function TopBar() {
   const pathname = usePathname()
   const { openMobile } = useSidebar()
+  const isMobile = useIsMobile()
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [cmdFullscreen, setCmdFullscreen] = useState(false)
   const title = getTitleFromPathname(pathname)
+  const isDashboard = pathname === '/dashboard'
+  const { greeting, dateStr } = useDashboardGreeting()
+  const user = useSessionStore((s) => s.user)
+  const firstName = user?.name?.split(/\s+/)[0] ?? 'there'
 
-  // ⌘K / Ctrl+K global shortcut
+  const openSearch = (fullscreen: boolean) => {
+    setCmdFullscreen(fullscreen)
+    setCmdOpen(true)
+  }
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setCmdOpen(true)
+        openSearch(false)
       }
     }
     window.addEventListener('keydown', handler)
@@ -47,94 +57,102 @@ export function TopBar() {
   return (
     <>
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
-        {/* Hamburger — mobile only */}
-        <button
-          type="button"
-          aria-label="Open navigation"
-          onClick={openMobile}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md lg:hidden',
-            'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
-            'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
-            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
-          )}
-        >
-          <Menu className="h-5 w-5" aria-hidden="true" />
-        </button>
+        {isMobile ? (
+          <>
+            <button
+              type="button"
+              aria-label="Open navigation"
+              onClick={openMobile}
+              className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+                'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+                'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+              )}
+            >
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            </button>
 
-        {/* Page title */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h1 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {title}
-          </h1>
-        </div>
+            <Link
+              href="/dashboard"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2"
+              aria-label="SAIOS home"
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+                <Zap className="h-4 w-4 text-white" aria-hidden="true" />
+              </div>
+              <span className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
+                SAIOS
+              </span>
+            </Link>
 
-        {/* ⌘K trigger */}
-        <button
-          type="button"
-          onClick={() => setCmdOpen(true)}
-          aria-label="Open command palette (⌘K)"
-          className={cn(
-            'hidden sm:flex items-center gap-2 rounded-md border px-3 h-8 text-xs',
-            'border-slate-200 bg-slate-50 text-slate-500',
-            'hover:border-slate-300 hover:bg-white hover:text-slate-900',
-            'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
-            'dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200',
-            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
-          )}
-        >
-          <Search className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="hidden md:inline">Search or jump to…</span>
-          <kbd className="hidden md:flex items-center gap-0.5 font-mono text-[10px] text-slate-400 dark:text-slate-500">
-            <span>⌘</span>K
-          </kbd>
-        </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => openSearch(true)}
+                aria-label="Search"
+                className={cn(
+                  'flex h-8 w-8 items-center justify-center rounded-md transition-colors',
+                  'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+                  'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+                )}
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <NotificationDropdown />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {isDashboard ? (
+                <div className="min-w-0 leading-tight">
+                  <p className="truncate font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                    {greeting}, {firstName} 👋
+                  </p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{dateStr}</p>
+                </div>
+              ) : (
+                <span className="truncate text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {title}
+                </span>
+              )}
+            </div>
 
-        {/* Right cluster */}
-        <div className="flex items-center gap-1">
-          <NotificationBell />
-          <ThemeToggle />
-          <UserMenu />
-        </div>
+            <button
+              type="button"
+              onClick={() => openSearch(false)}
+              aria-label="Open command palette (⌘K)"
+              className={cn(
+                'hidden sm:flex items-center gap-2 rounded-md border px-3 h-8 text-xs',
+                'border-slate-200 bg-slate-50 text-slate-500',
+                'hover:border-slate-300 hover:bg-white hover:text-slate-900',
+                'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
+                'dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200',
+                'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+              )}
+            >
+              <Search className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">Search or jump to…</span>
+              <kbd className="hidden md:flex items-center gap-0.5 font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                <span>⌘</span>K
+              </kbd>
+            </button>
+
+            <div className="flex items-center gap-1">
+              <NotificationDropdown />
+              <ThemeToggle />
+              <UserMenu />
+            </div>
+          </>
+        )}
       </header>
 
-      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
+      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} fullScreen={cmdFullscreen} />
     </>
   )
 }
-
-/* ── Notification Bell ────────────────────────────────────────────────────── */
-
-function NotificationBell() {
-  const router = useRouter()
-  const unread = 3 // TODO: fetch from API
-
-  return (
-    <button
-      type="button"
-      aria-label={`${unread} unread notifications`}
-      onClick={() => router.push('/alerts')}
-      className={cn(
-        'relative flex h-8 w-8 items-center justify-center rounded-md transition-colors',
-        'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
-        'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
-      )}
-    >
-      <Bell className="h-4 w-4" aria-hidden="true" />
-      {unread > 0 && (
-        <span
-          aria-hidden="true"
-          className="absolute right-1 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white"
-        >
-          {unread > 9 ? '9+' : unread}
-        </span>
-      )}
-    </button>
-  )
-}
-
-/* ── Theme Toggle ─────────────────────────────────────────────────────────── */
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -157,16 +175,10 @@ function ThemeToggle() {
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
       )}
     >
-      {isDark ? (
-        <Sun className="h-4 w-4" aria-hidden="true" />
-      ) : (
-        <Moon className="h-4 w-4" aria-hidden="true" />
-      )}
+      {isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
     </button>
   )
 }
-
-/* ── User Dropdown Menu ───────────────────────────────────────────────────── */
 
 const menuItemCls = cn(
   'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm outline-none',
@@ -178,6 +190,10 @@ const menuItemCls = cn(
 
 function UserMenu() {
   const router = useRouter()
+  const user = useSessionStore((s) => s.user)
+  const displayName = user?.name ?? 'User'
+  const displayEmail = user?.email ?? ''
+  const roleLabel = formatUserRole(user?.role)
 
   return (
     <DropdownMenu.Root>
@@ -189,7 +205,7 @@ function UserMenu() {
             'hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
           )}
         >
-          <Avatar name="Abdul Basith" size="sm" />
+          <Avatar name={displayName} src={user?.avatarUrl} size="sm" />
         </button>
       </DropdownMenu.Trigger>
 
@@ -204,28 +220,21 @@ function UserMenu() {
             'animate-scaleIn',
           )}
         >
-          {/* User info header */}
           <div className="mb-1 flex items-center gap-2.5 px-2.5 py-2 border-b border-slate-100 dark:border-slate-800">
-            <Avatar name="Abdul Basith" size="sm" status="online" />
+            <Avatar name={displayName} src={user?.avatarUrl} size="sm" status="online" />
             <div className="flex flex-col leading-none">
-              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Abdul Basith</span>
-              <span className="text-xs text-slate-500">admin@acme.com</span>
+              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{displayName}</span>
+              <span className="text-xs text-slate-500">{displayEmail}</span>
             </div>
-            <Badge variant="success" size="sm" className="ml-auto">Admin</Badge>
+            <Badge variant="success" size="sm" className="ml-auto">{roleLabel}</Badge>
           </div>
 
-          <DropdownMenu.Item
-            className={menuItemCls}
-            onSelect={() => router.push('/settings')}
-          >
+          <DropdownMenu.Item className={menuItemCls} onSelect={() => router.push('/settings/profile')}>
             <User className="h-4 w-4 text-slate-400" aria-hidden="true" />
             Profile
           </DropdownMenu.Item>
 
-          <DropdownMenu.Item
-            className={menuItemCls}
-            onSelect={() => router.push('/settings/general')}
-          >
+          <DropdownMenu.Item className={menuItemCls} onSelect={() => router.push('/settings/general')}>
             <Settings className="h-4 w-4 text-slate-400" aria-hidden="true" />
             Settings
           </DropdownMenu.Item>

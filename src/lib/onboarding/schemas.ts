@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { FORM_MESSAGES } from '@/lib/forms/formConfig'
+import { FORM_MESSAGES } from '@/lib/forms/formMessages'
 
 export const setupStep1Schema = z.object({
   businessName: z.string({ message: FORM_MESSAGES.required }).min(2, FORM_MESSAGES.minLength(2)),

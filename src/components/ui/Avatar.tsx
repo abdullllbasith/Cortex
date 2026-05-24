@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { cn, getInitials } from '@/lib/utils'
 
@@ -58,16 +58,32 @@ export function Avatar({ src, name, size = 'md', status, className }: AvatarProp
   const { wrapper, text, dot } = sizeClasses[size]
   const showImage = Boolean(src) && !imgError
 
+  useEffect(() => {
+    setImgError(false)
+  }, [src])
+
+  const isBlobUrl = src?.startsWith('blob:')
+
   return (
     <span className={cn('relative inline-flex shrink-0', wrapper, className)}>
       {showImage ? (
-        <Image
-          src={src!}
-          alt={name}
-          fill
-          className="rounded-full object-cover"
-          onError={() => setImgError(true)}
-        />
+        isBlobUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={name}
+            className="h-full w-full rounded-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <Image
+            src={src!}
+            alt={name}
+            fill
+            className="rounded-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        )
       ) : (
         <span
           aria-label={name}

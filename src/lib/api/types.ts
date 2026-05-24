@@ -6,18 +6,53 @@ export interface ApiErrorDetails {
   [key: string]: unknown
 }
 
+/** Coerce API / thrown values into a human-readable error string */
+export function formatApiErrorMessage(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (value instanceof Error) return value.message || 'Request failed'
+  if (Array.isArray(value)) {
+    const parts = value.map(formatApiErrorMessage).filter((part) => part && part !== 'Request failed')
+    if (parts.length) return parts.join('; ')
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (obj.message !== undefined && obj.message !== value) {
+      return formatApiErrorMessage(obj.message)
+    }
+    if (Array.isArray(obj.issues)) {
+      const issueMessages = obj.issues
+        .map((issue) =>
+          issue && typeof issue === 'object' && 'message' in issue
+            ? String((issue as { message: unknown }).message)
+            : '',
+        )
+        .filter(Boolean)
+      if (issueMessages.length) return issueMessages.join('; ')
+    }
+    try {
+      const json = JSON.stringify(value)
+      if (json && json !== '{}') return json
+    } catch {
+      /* non-serializable */
+    }
+  }
+  if (value == null) return 'Request failed'
+  const text = String(value)
+  return text === '[object Object]' ? 'Request failed' : text
+}
+
 export class ApiError extends Error {
   readonly code: string
   readonly statusCode: number
   readonly details?: ApiErrorDetails
 
   constructor(
-    message: string,
+    message: unknown,
     statusCode: number,
     code = 'API_ERROR',
     details?: ApiErrorDetails,
   ) {
-    super(message)
+    super(formatApiErrorMessage(message))
     this.name = 'ApiError'
     this.code = code
     this.statusCode = statusCode

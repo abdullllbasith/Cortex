@@ -1,6 +1,6 @@
 'use client'
 
-import useSWR from 'swr'
+import { useState } from 'react'
 import {
   ResponsiveContainer,
   BarChart,
@@ -11,9 +11,12 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts'
-import { Skeleton } from '@/components/ui'
+import { BarChart3 } from 'lucide-react'
+import { Skeleton, Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData } from './types'
+import { apiClient } from '@/lib/api/apiClient'
+import { toast } from '@/components/ui'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 /* ── Custom tooltip ──────────────────────────────────────────────────────── */
 
@@ -40,7 +43,26 @@ function CustomTooltip({
 /* ── RevenueChart ────────────────────────────────────────────────────────── */
 
 export function RevenueChart() {
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive')
+  const { data, isLoading, mutate } = useExecutiveDashboard()
+  const [seeding, setSeeding] = useState(false)
+
+  const chartData = data?.revenueChart ?? []
+  const hasRevenue = chartData.some((point) => point.revenue > 0)
+
+  async function loadDemoData() {
+    setSeeding(true)
+    try {
+      const result = await apiClient.post<{ seeded: boolean; message: string; salesEvents: number }>(
+        '/onboarding/demo-data',
+      )
+      toast.success(result.message)
+      await mutate()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load demo data')
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 h-full">
@@ -72,10 +94,28 @@ export function RevenueChart() {
 
       {isLoading || !data ? (
         <Skeleton height="200px" className="rounded-lg" />
+      ) : !hasRevenue ? (
+        <div className="flex h-[200px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/50 text-center dark:border-slate-700 dark:bg-slate-900/40">
+          <BarChart3 className="h-8 w-8 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No revenue data yet</p>
+          <p className="max-w-xs text-xs text-slate-400 dark:text-slate-500">
+            Your workspace has no sales history yet. Load demo data to preview the dashboard.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            loading={seeding}
+            onClick={() => void loadDemoData()}
+          >
+            Load demo data
+          </Button>
+        </div>
       ) : (
-        <ResponsiveContainer width="100%" height={200}>
+        <div className="h-[200px] w-full min-w-0">
+        <ResponsiveContainer width="100%" height={200} minWidth={0}>
           <BarChart
-            data={data.revenueChart}
+            data={chartData}
             margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
             barSize={28}
           >
@@ -102,7 +142,7 @@ export function RevenueChart() {
             />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99,102,241,0.05)' }} />
             <Bar dataKey="revenue" radius={[4, 4, 0, 0]} isAnimationActive>
-              {data.revenueChart.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell
                   key={index}
                   fill={entry.isToday ? '#4f46e5' : '#c7d2fe'}
@@ -112,6 +152,7 @@ export function RevenueChart() {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   )

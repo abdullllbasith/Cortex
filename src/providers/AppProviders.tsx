@@ -5,6 +5,8 @@ import { ThemeProvider } from 'next-themes'
 import { SWRConfig } from 'swr'
 import { Toaster } from '@/components/ui/Toast'
 import { swrFetcher } from '@/lib/api/apiClient'
+import { DevSessionBootstrap } from '@/components/auth/DevSessionBootstrap'
+import { SessionProfileHydrator } from '@/components/auth/SessionProfileHydrator'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUiStore } from '@/store/uiStore'
 
@@ -51,6 +53,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
     >
       <SWRConfig value={swrConfig}>
         <ZustandHydration>
+          <DevSessionBootstrap />
+          <SessionProfileHydrator />
           {children}
           <Toaster />
         </ZustandHydration>

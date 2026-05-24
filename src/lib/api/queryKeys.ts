@@ -75,6 +75,13 @@ export const queryKeys = {
       [...queryKeys.alerts.all, unreadOnly ? 'unread' : 'all'] as const,
   },
 
+  notifications: {
+    all: ['notifications'] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...queryKeys.notifications.all, 'list', serializeFilters(filters)] as const,
+    preferences: () => [...queryKeys.notifications.all, 'preferences'] as const,
+  },
+
   session: {
     user:   ['session', 'user']   as const,
     tenant: ['session', 'tenant'] as const,

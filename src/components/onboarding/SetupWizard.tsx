@@ -16,6 +16,7 @@ import {
   INDUSTRIES, COMPANY_SIZES, TIMEZONES, CURRENCIES, FISCAL_MONTHS, WORKFLOW_TEMPLATES,
 } from '@/lib/auth/constants'
 import { signOut } from '@/lib/supabase/auth'
+import { apiClient } from '@/lib/api/apiClient'
 import { cn } from '@/lib/utils'
 
 function parseCsvPreview(text: string): { headers: string[]; rows: string[][] } {
@@ -99,7 +100,14 @@ export function SetupWizard() {
     }
   }
 
-  const onComplete = form.handleSubmit(async () => {
+  const onComplete = form.handleSubmit(async (values) => {
+    if (values.importMethod === 'demo') {
+      try {
+        await apiClient.post('/onboarding/demo-data')
+      } catch {
+        /* dashboard can load demo data later */
+      }
+    }
     confetti({ particleCount: 180, spread: 80, origin: { y: 0.55 } })
     sessionStorage.removeItem('saios:setup-stepper')
     router.push('/dashboard')

@@ -6,12 +6,16 @@ import { ChevronLeft, ChevronRight, LogOut, Zap } from 'lucide-react'
 import { Avatar, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
+import { useIsTablet, useIsDesktop } from '@/hooks/useIsMobile'
 import {
   navSections,
   isNavItemActive,
   type NavItem,
   type NavSection,
 } from './nav-config'
+import { useTenantBranding } from '@/components/branding/TenantBrandingProvider'
+import { useSessionStore } from '@/store/sessionStore'
+import { formatUserRole } from '@/lib/auth/displayUser'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SAIOS Sidebar
@@ -19,46 +23,47 @@ import {
 
 export function Sidebar({ className }: { className?: string }) {
   const { collapsed, toggle } = useSidebar()
+  const isTablet = useIsTablet()
+  const isDesktop = useIsDesktop()
+  const effectiveCollapsed = isTablet || collapsed
 
   return (
     <aside
       className={cn(
         'relative flex h-full flex-col bg-slate-950 transition-all duration-300 ease-spring',
         'border-r border-slate-800/60',
-        collapsed ? 'w-[60px]' : 'w-[240px]',
+        effectiveCollapsed ? 'w-[60px]' : 'w-[240px]',
         className,
       )}
     >
-      {/* Logo */}
-      <SidebarLogo collapsed={collapsed} />
+      <SidebarLogo collapsed={effectiveCollapsed} />
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-area">
         {navSections.map((section) => (
-          <SidebarSection key={section.label} section={section} collapsed={collapsed} />
+          <SidebarSection key={section.label} section={section} collapsed={effectiveCollapsed} />
         ))}
       </nav>
 
-      {/* User */}
-      <SidebarUser collapsed={collapsed} />
+      <SidebarUser collapsed={effectiveCollapsed} />
 
-      {/* Collapse toggle */}
-      <button
-        onClick={toggle}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className={cn(
-          'absolute -right-3 top-20 z-10 flex h-6 w-6 items-center justify-center',
-          'rounded-full border border-slate-700 bg-slate-800 text-slate-400',
-          'hover:bg-slate-700 hover:text-white transition-colors shadow-sm',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
-        )}
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3" aria-hidden="true" />
-        ) : (
-          <ChevronLeft className="h-3 w-3" aria-hidden="true" />
-        )}
-      </button>
+      {isDesktop && !isTablet && (
+        <button
+          onClick={toggle}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={cn(
+            'absolute -right-3 top-20 z-10 flex h-6 w-6 items-center justify-center',
+            'rounded-full border border-slate-700 bg-slate-800 text-slate-400',
+            'hover:bg-slate-700 hover:text-white transition-colors shadow-sm',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <ChevronLeft className="h-3 w-3" aria-hidden="true" />
+          )}
+        </button>
+      )}
     </aside>
   )
 }
@@ -66,6 +71,9 @@ export function Sidebar({ className }: { className?: string }) {
 /* ── Logo ─────────────────────────────────────────────────────────────────── */
 
 function SidebarLogo({ collapsed }: { collapsed: boolean }) {
+  const branding = useTenantBranding()
+  const tenantName = useSessionStore((s) => s.tenant?.name) ?? branding.name ?? 'Workspace'
+
   return (
     <div
       className={cn(
@@ -73,10 +81,21 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
         collapsed ? 'justify-center px-0' : 'gap-2.5 px-4',
       )}
     >
-      {/* Icon mark */}
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600">
-        <Zap className="h-4 w-4 text-white" aria-hidden="true" />
-      </div>
+      {branding.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={branding.logoUrl}
+          alt=""
+          className="h-7 w-7 shrink-0 rounded-lg object-cover"
+        />
+      ) : (
+        <div
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+          style={{ backgroundColor: 'var(--color-brand)' }}
+        >
+          <Zap className="h-4 w-4 text-white" aria-hidden="true" />
+        </div>
+      )}
 
       {!collapsed && (
         <div className="flex flex-col leading-none overflow-hidden">
@@ -84,7 +103,7 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
             SAIOS
           </span>
           <span className="text-[10px] text-slate-500 truncate tracking-wide">
-            Acme Corporation
+            {tenantName}
           </span>
         </div>
       )}
@@ -141,11 +160,11 @@ function SidebarNavItem({
           : active
             ? 'bg-slate-800 text-white'
             : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
-        active && !collapsed && 'border-l-2 border-indigo-500 rounded-l-none pl-[calc(0.625rem-2px)]',
+        active && !collapsed && 'border-l-2 border-[var(--color-brand)] rounded-l-none pl-[calc(0.625rem-2px)]',
       )}
     >
       <Icon
-        className={cn('h-4 w-4 shrink-0', active ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-300')}
+        className={cn('h-4 w-4 shrink-0', active ? 'text-[var(--color-brand-hover)]' : 'text-slate-500 group-hover:text-slate-300')}
         aria-hidden="true"
       />
 
@@ -156,7 +175,7 @@ function SidebarNavItem({
             <span
               className={cn(
                 'ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold',
-                active ? 'bg-indigo-500/30 text-indigo-300' : 'bg-slate-700 text-slate-300',
+                active ? 'bg-[color-mix(in_srgb,var(--color-brand)_30%,transparent)] text-[var(--color-brand-hover)]' : 'bg-slate-700 text-slate-300',
               )}
             >
               {badge}
@@ -207,6 +226,9 @@ function SidebarNavItem({
 
 function SidebarUser({ collapsed }: { collapsed: boolean }) {
   const router = useRouter()
+  const user = useSessionStore((s) => s.user)
+  const displayName = user?.name ?? 'User'
+  const roleLabel = formatUserRole(user?.role)
 
   const handleLogout = () => {
     // TODO: call auth signOut + redirect to /login
@@ -220,12 +242,18 @@ function SidebarUser({ collapsed }: { collapsed: boolean }) {
         collapsed ? 'flex-col gap-2 px-2' : 'gap-3 px-3',
       )}
     >
-      <Avatar name="Abdul Basith" size="sm" status="online" className="shrink-0" />
+      <Avatar
+        name={displayName}
+        src={user?.avatarUrl}
+        size="sm"
+        status="online"
+        className="shrink-0"
+      />
 
       {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col leading-none">
-          <span className="truncate text-xs font-semibold text-slate-200">Abdul Basith</span>
-          <span className="truncate text-[10px] text-slate-500">Administrator</span>
+          <span className="truncate text-xs font-semibold text-slate-200">{displayName}</span>
+          <span className="truncate text-[10px] text-slate-500">{roleLabel}</span>
         </div>
       )}
 

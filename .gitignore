@@ -38,4 +38,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# local tenant uploads (dev fallback when Supabase storage key is absent)
+/public/tenant-uploads/
 next-env.d.ts

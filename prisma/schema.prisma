@@ -1,0 +1,1590 @@
+// SAIOS Module 01 — Enterprise Knowledge Engine
+// PostgreSQL + pgvector for semantic search
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum TenantPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum BusinessKnowledgeType {
+  POLICY
+  SOP
+  DOCUMENT
+  CONTRACT
+  REPORT
+}
+
+enum EmbeddingStatus {
+  PENDING
+  INDEXED
+  ERROR
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum ConversationIntent {
+  QUERY
+  COMMAND
+  REPORT
+  FORECAST
+  AUTOMATION
+}
+
+enum AgentType {
+  FINANCE
+  SALES
+  INVENTORY
+  OPERATIONS
+  EXECUTIVE
+}
+
+enum AgentTaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+enum AgentTaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum AgentLogStatus {
+  SUCCESS
+  FAILURE
+  PARTIAL
+}
+
+enum InventoryEventType {
+  RESTOCK
+  SALE
+  ADJUSTMENT
+  WASTE
+}
+
+enum ProductUnit {
+  PCS
+  KG
+  L
+  M
+  BOX
+  PACK
+}
+
+enum StockTransactionType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN_IN
+  RETURN_OUT
+  DAMAGE
+  WRITE_OFF
+  OPENING
+}
+
+enum StockTransferStatus {
+  DRAFT
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum InventoryCostingMethod {
+  FIFO
+  WEIGHTED_AVERAGE
+  LIFO
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum GoodsReceiptStatus {
+  DRAFT
+  COMPLETE
+}
+
+enum CustomerEventType {
+  VISIT
+  PURCHASE
+  CHURN
+  RETURN
+  COMPLAINT
+}
+
+enum SupplierEventType {
+  ORDER
+  DELIVERY
+  DELAY
+  RETURN
+}
+
+enum AnalyticsSnapshotType {
+  SALES_HOURLY
+  SALES_DAILY
+  SALES_WEEKLY
+  CUSTOMER_DAILY
+  INVENTORY_HOURLY
+  SUPPLIER_DAILY
+  EXECUTIVE_DAILY
+}
+
+enum FeatureEntityType {
+  SALES
+  CUSTOMER
+  INVENTORY
+  SUPPLIER
+}
+
+enum MLModelType {
+  SALES_FORECAST
+  INVENTORY_FORECAST
+  CUSTOMER_CHURN
+  SUPPLIER_RISK
+}
+
+enum MLModelStatus {
+  ACTIVE
+  TRAINING
+  DEPRECATED
+}
+
+enum MLPredictionType {
+  SALES_FORECAST
+  INVENTORY_STOCKOUT
+  CUSTOMER_CHURN
+  SUPPLIER_RISK
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AlertType {
+  STOCKOUT
+  REVENUE_DROP
+  CUSTOMER_CHURN
+  SUPPLIER_DELAY
+  GENERAL
+}
+
+enum WorkflowTriggerType {
+  MANUAL
+  EVENT
+  SCHEDULE
+  WEBHOOK
+}
+
+enum WorkflowExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowNodeExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum UserRole {
+  OWNER
+  CEO
+  MANAGER
+  FINANCE_OFFICER
+  SALES_OFFICER
+  EMPLOYEE
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  SUPPORT
+  BILLING_ADMIN
+}
+
+enum AnnouncementType {
+  MAINTENANCE
+  FEATURE
+  URGENT
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum FeatureFlagScope {
+  ALL
+  NONE
+  SPECIFIC_TENANTS
+  SPECIFIC_PLANS
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  MFA_ENABLED
+  MFA_DISABLED
+  PASSWORD_CHANGED
+  PERMISSION_DENIED
+  SUSPICIOUS_ACTIVITY
+  DATA_EXPORT
+  BULK_DELETE
+}
+
+enum NotificationType {
+  ALERT
+  SYSTEM
+  ACTIVITY
+  MENTION
+  REMINDER
+  BILLING
+  SECURITY
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum NotificationDigestFrequency {
+  IMMEDIATE
+  HOURLY
+  DAILY
+  WEEKLY
+}
+
+// ── Tenant (multi-tenant root) ───────────────────────────────────────────────
+
+model Tenant {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  plan      TenantPlan @default(STARTER)
+  settings  Json       @default("{}")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  customers            Customer[]
+  products             Product[]
+  suppliers            Supplier[]
+  businessKnowledge    BusinessKnowledge[]
+  conversationSessions ConversationSession[]
+  channelConnections   ChannelConnection[]
+  agentMemories        AgentMemory[]
+  agentLogs            AgentLog[]
+  agentTasks           AgentTask[]
+  salesEvents          SalesEvent[]
+  inventoryEvents      InventoryEvent[]
+  customerEvents       CustomerEvent[]
+  supplierEvents       SupplierEvent[]
+  analyticsSnapshots   AnalyticsSnapshot[]
+  featureSnapshots     FeatureSnapshot[]
+  mlModels             MLModel[]
+  mlPredictions        MLPrediction[]
+  alerts               Alert[]
+  alertRules           AlertRule[]
+  workflowDefinitions  WorkflowDefinition[]
+  workflowExecutions   WorkflowExecution[]
+  users                User[]
+  apiKeys              ApiKey[]
+  auditLogs            AuditLog[]
+  securityEvents       SecurityEvent[]
+  customRoles          CustomRole[]
+  roleChanges          RoleChange[]
+  notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
+  notificationDigests  NotificationDigest[]
+  pushSubscriptions    PushSubscription[]
+  webhookEndpoints   WebhookEndpoint[]
+  teamInvitations    TeamInvitation[]
+  supportTickets     SupportTicket[]
+  categories         Category[]
+  productVariants    ProductVariant[]
+  warehouses         Warehouse[]
+  stockLedger        StockLedger[]
+  stockBalances      StockBalance[]
+  stockTransfers     StockTransfer[]
+  stockReservations  StockReservation[]
+  purchaseOrders     PurchaseOrder[]
+  goodsReceipts      GoodsReceipt[]
+  poApprovalRules    POApprovalRule[]
+
+  @@map("tenants")
+}
+
+// ── Customer ─────────────────────────────────────────────────────────────────
+
+model Customer {
+  id                   String          @id @default(cuid())
+  tenantId             String
+  profile              Json            @default("{}")
+  purchaseHistory      Json            @default("[]")
+  preferences          Json            @default("{}")
+  communicationHistory Json            @default("[]")
+  loyaltyData          Json            @default("{}")
+  embedding            Unsupported("vector(1536)")?
+  embeddingStatus      EmbeddingStatus @default(PENDING)
+  embeddingContentHash String?
+  embeddingUpdatedAt   DateTime?
+  version              Int             @default(0)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, embeddingStatus])
+  @@index([tenantId, updatedAt])
+  @@map("customers")
+}
+
+// ── Product (Module 12 — Inventory Operations) ───────────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  slug        String
+  parentId    String?
+  description String?  @db.Text
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, parentId])
+  @@map("categories")
+}
+
+model Product {
+  id                   String          @id @default(cuid())
+  tenantId             String
+  sku                  String
+  barcode              String?
+  name                 String
+  slug                 String
+  description          String?         @db.Text
+  categoryId           String?
+  unit                 ProductUnit     @default(PCS)
+  costPrice            Decimal         @default(0) @db.Decimal(14, 4)
+  sellingPrice         Decimal         @default(0) @db.Decimal(14, 4)
+  minSellingPrice      Decimal?        @db.Decimal(14, 4)
+  taxRate              Decimal         @default(0) @db.Decimal(5, 2)
+  imageUrls            String[]        @default([])
+  isActive             Boolean         @default(true)
+  isService            Boolean         @default(false)
+  trackInventory       Boolean         @default(true)
+  reorderPoint         Decimal         @default(0) @db.Decimal(14, 4)
+  reorderQuantity      Decimal         @default(0) @db.Decimal(14, 4)
+  leadTimeDays         Int             @default(7)
+  supplierId           String?
+  weight               Decimal?        @db.Decimal(10, 3)
+  dimensions           Json            @default("{}")
+  // Legacy knowledge-engine fields (backward compatible)
+  catalog              Json            @default("{}")
+  inventoryLevel       Int             @default(0)
+  supplierInfo         Json            @default("{}")
+  pricingHistory       Json            @default("[]")
+  embedding            Unsupported("vector(1536)")?
+  embeddingStatus      EmbeddingStatus @default(PENDING)
+  embeddingContentHash String?
+  embeddingUpdatedAt   DateTime?
+  version              Int             @default(0)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category      Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplier      Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  variants      ProductVariant[]
+  stockLedger   StockLedger[]
+  stockBalances StockBalance[]
+  reservations  StockReservation[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@index([tenantId, barcode])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, embeddingStatus])
+  @@map("products")
+}
+
+model ProductVariant {
+  id           String   @id @default(cuid())
+  productId    String
+  tenantId     String
+  name         String
+  sku          String
+  barcode      String?
+  attributes   Json     @default("{}")
+  costPrice    Decimal? @db.Decimal(14, 4)
+  sellingPrice Decimal? @db.Decimal(14, 4)
+  imageUrl     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product       Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockLedger   StockLedger[]
+  stockBalances StockBalance[]
+  reservations  StockReservation[]
+
+  @@unique([tenantId, sku])
+  @@index([productId])
+  @@index([tenantId, barcode])
+  @@map("product_variants")
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  code      String
+  address   Json     @default("{}")
+  isDefault Boolean  @default(false)
+  managerId String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager          User?           @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  locations        StockLocation[]
+  stockLedger      StockLedger[]
+  stockBalances    StockBalance[]
+  reservations     StockReservation[]
+  transfersFrom    StockTransfer[] @relation("TransferFrom")
+  transfersTo      StockTransfer[] @relation("TransferTo")
+  purchaseOrders   PurchaseOrder[]
+  goodsReceipts    GoodsReceipt[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("warehouses")
+}
+
+model StockLocation {
+  id          String   @id @default(cuid())
+  warehouseId String
+  name        String
+  aisle       String?
+  shelf       String?
+  bin         String?
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@map("stock_locations")
+}
+
+model StockLedger {
+  id              String               @id @default(cuid())
+  tenantId        String
+  productId       String
+  variantId       String?
+  warehouseId     String
+  transactionType StockTransactionType
+  quantity        Decimal              @db.Decimal(14, 4)
+  unitCost        Decimal              @default(0) @db.Decimal(14, 4)
+  totalCost       Decimal              @default(0) @db.Decimal(14, 4)
+  referenceType   String?
+  referenceId     String?
+  notes           String?              @db.Text
+  performedBy     String?
+  createdAt       DateTime             @default(now())
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  performer User?           @relation("StockLedgerPerformer", fields: [performedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, productId, createdAt])
+  @@index([tenantId, warehouseId, createdAt])
+  @@index([tenantId, referenceType, referenceId])
+  @@map("stock_ledger")
+}
+
+model StockBalance {
+  id               String   @id @default(cuid())
+  tenantId         String
+  productId        String
+  variantId        String?
+  warehouseId      String
+  quantityOnHand   Decimal  @default(0) @db.Decimal(14, 4)
+  quantityReserved Decimal  @default(0) @db.Decimal(14, 4)
+  quantityOnOrder  Decimal  @default(0) @db.Decimal(14, 4)
+  lastUpdatedAt    DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, productId, variantId, warehouseId])
+  @@index([tenantId, warehouseId])
+  @@index([tenantId, productId])
+  @@map("stock_balances")
+}
+
+model StockReservation {
+  id          String   @id @default(cuid())
+  tenantId    String
+  productId   String
+  variantId   String?
+  warehouseId String
+  referenceId String
+  quantity    Decimal  @db.Decimal(14, 4)
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, referenceId])
+  @@index([tenantId, productId, warehouseId])
+  @@map("stock_reservations")
+}
+
+model StockTransfer {
+  id              String              @id @default(cuid())
+  tenantId        String
+  fromWarehouseId String
+  toWarehouseId   String
+  status          StockTransferStatus @default(DRAFT)
+  items           Json                @default("[]")
+  initiatedBy     String?
+  completedBy     String?
+  notes           String?             @db.Text
+  createdAt       DateTime            @default(now())
+  completedAt     DateTime?
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+  initiator     User?     @relation("TransferInitiator", fields: [initiatedBy], references: [id], onDelete: SetNull)
+  completer     User?     @relation("TransferCompleter", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("stock_transfers")
+}
+
+model PurchaseOrder {
+  id               String              @id @default(cuid())
+  tenantId         String
+  poNumber         String
+  supplierId       String
+  warehouseId      String
+  status           PurchaseOrderStatus @default(DRAFT)
+  items            Json                @default("[]")
+  subtotal         Decimal             @default(0) @db.Decimal(14, 4)
+  taxTotal         Decimal             @default(0) @db.Decimal(14, 4)
+  shippingCost     Decimal             @default(0) @db.Decimal(14, 4)
+  grandTotal       Decimal             @default(0) @db.Decimal(14, 4)
+  currency         String              @default("USD")
+  expectedDelivery DateTime?
+  terms            String?             @db.Text
+  notes            String?             @db.Text
+  approvedBy       String?
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  createdBy        String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier    Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  approver    User?         @relation("POApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  creator     User?         @relation("POCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  receipts    GoodsReceipt[]
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, warehouseId])
+  @@index([tenantId, expectedDelivery])
+  @@index([tenantId, createdAt])
+  @@map("purchase_orders")
+}
+
+model GoodsReceipt {
+  id              String             @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  receiptNumber   String
+  warehouseId     String
+  status          GoodsReceiptStatus @default(DRAFT)
+  items           Json               @default("[]")
+  receivedBy      String?
+  receivedAt      DateTime?
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  receiver      User?         @relation("GoodsReceiver", fields: [receivedBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId, purchaseOrderId])
+  @@index([tenantId, receivedAt])
+  @@map("goods_receipts")
+}
+
+model POApprovalRule {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  minAmount            Decimal  @db.Decimal(14, 4)
+  maxAmount            Decimal? @db.Decimal(14, 4)
+  requiredApproverRole UserRole
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("po_approval_rules")
+}
+
+// ── Supplier ─────────────────────────────────────────────────────────────────
+
+model Supplier {
+  id                   String          @id @default(cuid())
+  tenantId             String
+  name                 String
+  performanceScore     Float           @default(0)
+  deliveryHistory      Json            @default("[]")
+  reliabilityMetrics   Json            @default("{}")
+  costTrends           Json            @default("[]")
+  embedding            Unsupported("vector(1536)")?
+  embeddingStatus      EmbeddingStatus @default(PENDING)
+  embeddingContentHash String?
+  embeddingUpdatedAt   DateTime?
+  version              Int             @default(0)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products     Product[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@index([tenantId, embeddingStatus])
+  @@map("suppliers")
+}
+
+// ── BusinessKnowledge ────────────────────────────────────────────────────────
+
+model BusinessKnowledge {
+  id                   String                @id @default(cuid())
+  tenantId             String
+  type                 BusinessKnowledgeType
+  title                String
+  content              String                @db.Text
+  metadata             Json                  @default("{}")
+  embedding            Unsupported("vector(1536)")?
+  embeddingStatus      EmbeddingStatus       @default(PENDING)
+  embeddingContentHash String?
+  embeddingUpdatedAt   DateTime?
+  version              Int                   @default(0)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([tenantId, embeddingStatus])
+  @@map("business_knowledge")
+}
+
+// ── Audit log for entity change timeline ─────────────────────────────────────
+
+model KnowledgeAuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  action     String
+  changes    Json     @default("{}")
+  actorId    String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+  @@map("knowledge_audit_logs")
+}
+
+// ── Module 02: AI Executive Assistant ────────────────────────────────────────
+
+model ConversationSession {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  title     String   @default("New conversation")
+  summary   String?  @db.Text
+  archived  Boolean  @default(false)
+  channel   String   @default("web")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages ConversationMessage[]
+
+  @@index([tenantId, userId, updatedAt])
+  @@index([tenantId, userId, archived])
+  @@map("conversation_sessions")
+}
+
+model ConversationMessage {
+  id                 String              @id @default(cuid())
+  sessionId          String
+  tenantId           String
+  role               MessageRole
+  content            String              @db.Text
+  intent             ConversationIntent?
+  confidence         Float?
+  sourcesUsed        Json                @default("[]")
+  actionsTaken       Json                @default("[]")
+  suggestedFollowUps Json                @default("[]")
+  metadata           Json                @default("{}")
+  createdAt          DateTime            @default(now())
+
+  session ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("conversation_messages")
+}
+
+model ChannelConnection {
+  id        String   @id @default(cuid())
+  tenantId  String
+  channel   String
+  enabled   Boolean  @default(false)
+  config    Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, channel])
+  @@index([tenantId, enabled])
+  @@map("channel_connections")
+}
+
+// ── Module 03: Multi-Agent Intelligence System ────────────────────────────────
+
+model AgentMemory {
+  id        String    @id @default(cuid())
+  tenantId  String
+  agentType AgentType
+  key       String
+  value     Json
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, agentType, key])
+  @@index([tenantId, agentType])
+  @@index([expiresAt])
+  @@map("agent_memories")
+}
+
+model AgentLog {
+  id         String         @id @default(cuid())
+  tenantId   String
+  agentId    String
+  agentType  AgentType
+  action     String
+  input      Json           @default("{}")
+  result     Json           @default("{}")
+  status     AgentLogStatus @default(SUCCESS)
+  durationMs Int?
+  userId     String?
+  taskId     String?
+  createdAt  DateTime       @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, agentType, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([taskId])
+  @@map("agent_logs")
+}
+
+model AgentTask {
+  id            String            @id @default(cuid())
+  tenantId      String
+  userId        String
+  task          String            @db.Text
+  agentType     AgentType?
+  priority      AgentTaskPriority @default(MEDIUM)
+  status        AgentTaskStatus   @default(PENDING)
+  result        Json?
+  steps         Json              @default("[]")
+  error         String?           @db.Text
+  retryCount    Int               @default(0)
+  bullJobId     String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, userId])
+  @@index([status, priority])
+  @@map("agent_tasks")
+}
+
+// ── Module 04: Enterprise Analytics Engine ───────────────────────────────────
+
+model SalesEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  productId  String?
+  customerId String?
+  quantity   Int      @default(1)
+  revenue    Float    @default(0)
+  cost       Float    @default(0)
+  margin     Float    @default(0)
+  channel    String   @default("direct")
+  branchId   String?
+  timestamp  DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, timestamp])
+  @@index([tenantId, branchId, timestamp])
+  @@index([tenantId, productId, timestamp])
+  @@index([tenantId, customerId, timestamp])
+  @@map("sales_events")
+}
+
+model InventoryEvent {
+  id        String             @id @default(cuid())
+  tenantId  String
+  productId String
+  type      InventoryEventType
+  quantity  Int
+  timestamp DateTime           @default(now())
+  createdAt DateTime           @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, timestamp])
+  @@index([tenantId, productId, timestamp])
+  @@index([tenantId, type, timestamp])
+  @@map("inventory_events")
+}
+
+model CustomerEvent {
+  id         String            @id @default(cuid())
+  tenantId   String
+  customerId String
+  type       CustomerEventType
+  metadata   Json              @default("{}")
+  timestamp  DateTime          @default(now())
+  createdAt  DateTime          @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, timestamp])
+  @@index([tenantId, customerId, timestamp])
+  @@index([tenantId, type, timestamp])
+  @@map("customer_events")
+}
+
+model SupplierEvent {
+  id         String            @id @default(cuid())
+  tenantId   String
+  supplierId String
+  type       SupplierEventType
+  metadata   Json              @default("{}")
+  timestamp  DateTime          @default(now())
+  createdAt  DateTime          @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, timestamp])
+  @@index([tenantId, supplierId, timestamp])
+  @@index([tenantId, type, timestamp])
+  @@map("supplier_events")
+}
+
+model AnalyticsSnapshot {
+  id           String               @id @default(cuid())
+  tenantId     String
+  snapshotType AnalyticsSnapshotType
+  period       String
+  data         Json
+  lastEventAt  DateTime?
+  computedAt   DateTime             @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, snapshotType, period])
+  @@index([tenantId, snapshotType, computedAt])
+  @@map("analytics_snapshots")
+}
+
+// ── Module 05: Predictive Intelligence Engine ────────────────────────────────
+
+model FeatureSnapshot {
+  id         String            @id @default(cuid())
+  tenantId   String
+  entityType FeatureEntityType
+  entityId   String            @default("tenant")
+  features   Json
+  computedAt DateTime          @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId, entityType, computedAt])
+  @@map("feature_snapshots")
+}
+
+model MLModel {
+  id        String        @id @default(cuid())
+  tenantId  String
+  modelType MLModelType
+  version   String        @default("1.0.0")
+  status    MLModelStatus @default(ACTIVE)
+  config    Json          @default("{}")
+  metrics   Json          @default("{}")
+  trainedAt DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  predictions MLPrediction[]
+
+  @@index([tenantId, modelType, status])
+  @@map("ml_models")
+}
+
+model MLPrediction {
+  id             String           @id @default(cuid())
+  tenantId       String
+  modelId        String?
+  predictionType MLPredictionType
+  entityId       String?
+  payload        Json
+  confidence     Float?
+  computedAt     DateTime         @default(now())
+  expiresAt      DateTime?
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model  MLModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, predictionType, computedAt])
+  @@index([tenantId, entityId, predictionType])
+  @@map("ml_predictions")
+}
+
+model Alert {
+  id                String        @id @default(cuid())
+  tenantId          String
+  type              AlertType
+  severity          AlertSeverity
+  title             String
+  message           String        @db.Text
+  relatedEntityId   String?
+  relatedEntityType String?
+  isRead            Boolean       @default(false)
+  expiresAt         DateTime?
+  metadata          Json          @default("{}")
+  createdAt         DateTime      @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isRead, createdAt])
+  @@index([tenantId, severity, createdAt])
+  @@index([tenantId, type, relatedEntityId, createdAt])
+  @@map("alerts")
+}
+
+model AlertRule {
+  id        String        @id @default(cuid())
+  tenantId  String
+  name      String
+  enabled   Boolean       @default(true)
+  ruleType  String
+  threshold Float
+  severity  AlertSeverity
+  config    Json          @default("{}")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, ruleType])
+  @@index([tenantId, enabled])
+  @@map("alert_rules")
+}
+
+// ── Module 06: Workflow Automation Engine ─────────────────────────────────────
+
+model WorkflowDefinition {
+  id            String              @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?             @db.Text
+  triggerType   WorkflowTriggerType @default(MANUAL)
+  triggerConfig Json                @default("{}")
+  nodes         Json                @default("[]")
+  edges         Json                @default("[]")
+  isActive      Boolean             @default(false)
+  version       Int                 @default(1)
+  webhookToken  String?             @unique
+  createdBy     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  executions WorkflowExecution[]
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, triggerType, isActive])
+  @@map("workflow_definitions")
+}
+
+model WorkflowExecution {
+  id                   String                  @id @default(cuid())
+  workflowDefinitionId String
+  tenantId             String
+  status               WorkflowExecutionStatus @default(PENDING)
+  triggeredBy          String?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  inputData            Json                    @default("{}")
+  outputData           Json                    @default("{}")
+  errorMessage         String?                 @db.Text
+  resumeFromNodeId     String?
+  createdAt            DateTime                @default(now())
+
+  definition     WorkflowDefinition      @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nodeExecutions WorkflowNodeExecution[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([workflowDefinitionId, createdAt])
+  @@map("workflow_executions")
+}
+
+model WorkflowNodeExecution {
+  id                  String                      @id @default(cuid())
+  workflowExecutionId String
+  nodeId              String
+  nodeType            String
+  status              WorkflowNodeExecutionStatus @default(PENDING)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  inputData           Json                        @default("{}")
+  outputData          Json                        @default("{}")
+  errorMessage        String?                     @db.Text
+  retryCount          Int                         @default(0)
+
+  execution WorkflowExecution @relation(fields: [workflowExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([workflowExecutionId, nodeId])
+  @@map("workflow_node_executions")
+}
+
+model WorkflowTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  category       String
+  description    String   @db.Text
+  definitionJSON Json
+  isPublic       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@index([category, isPublic])
+  @@map("workflow_templates")
+}
+
+// ── Module 08: Security & Governance ─────────────────────────────────────────
+
+model User {
+  id                String    @id @default(cuid())
+  tenantId          String
+  supabaseId        String    @unique
+  email             String
+  fullName          String
+  jobTitle          String?
+  phone             String?
+  avatarUrl         String?
+  timezone          String?
+  profileSettings   Json      @default("{}")
+  role              UserRole  @default(EMPLOYEE)
+  customPermissions Json      @default("[]")
+  customRoleId      String?
+  mfaEnabled        Boolean   @default(false)
+  mfaSecretEnc      String?
+  lastLoginAt       DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customRole   CustomRole?   @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  sessions     UserSession[]
+  apiKeys      ApiKey[]
+  auditLogs    AuditLog[]
+  roleChanges  RoleChange[]  @relation("RoleChangeUser")
+  roleChangesBy RoleChange[] @relation("RoleChangeBy")
+  notifications Notification[]
+  notificationPrefs NotificationPreference[]
+  notificationDigests NotificationDigest[]
+  pushSubscriptions PushSubscription[]
+  invitationsSent TeamInvitation[] @relation("InvitationsSent")
+  managedWarehouses Warehouse[] @relation("WarehouseManager")
+  stockLedgerEntries StockLedger[] @relation("StockLedgerPerformer")
+  transfersInitiated StockTransfer[] @relation("TransferInitiator")
+  transfersCompleted StockTransfer[] @relation("TransferCompleter")
+  purchaseOrdersCreated PurchaseOrder[] @relation("POCreator")
+  purchaseOrdersApproved PurchaseOrder[] @relation("POApprover")
+  goodsReceiptsReceived GoodsReceipt[] @relation("GoodsReceiver")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@index([tenantId, isActive])
+  @@map("users")
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  tenantId     String
+  sessionToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([tenantId])
+  @@map("user_sessions")
+}
+
+model ApiKey {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  name          String
+  keyHash       String    @unique
+  lastFourChars String
+  permissions   Json      @default("[]")
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("api_keys")
+}
+
+model AuditLog {
+  id            String        @id @default(cuid())
+  tenantId      String
+  userId        String?
+  sessionId     String?
+  action        String
+  resourceType  String
+  resourceId    String?
+  previousValue Json?
+  newValue      Json?
+  ipAddress     String?
+  userAgent     String?
+  timestamp     DateTime      @default(now())
+  severity      AuditSeverity @default(INFO)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, timestamp])
+  @@index([tenantId, userId])
+  @@index([tenantId, resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+model SecurityEvent {
+  id         String            @id @default(cuid())
+  tenantId   String
+  userId     String?
+  eventType  SecurityEventType
+  metadata   Json              @default("{}")
+  ipAddress  String?
+  timestamp  DateTime          @default(now())
+  isResolved Boolean           @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventType, timestamp])
+  @@index([tenantId, isResolved])
+  @@map("security_events")
+}
+
+model CustomRole {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  permissions Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@map("custom_roles")
+}
+
+model TeamInvitation {
+  id           String           @id @default(cuid())
+  tenantId     String
+  email        String
+  role         UserRole         @default(EMPLOYEE)
+  customRoleId String?
+  message      String?
+  token        String           @unique @default(cuid())
+  invitedById  String
+  status       InvitationStatus @default(PENDING)
+  expiresAt    DateTime
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User   @relation("InvitationsSent", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([token])
+  @@unique([tenantId, email])
+  @@map("team_invitations")
+}
+
+model RoleChange {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  changedById  String
+  previousRole UserRole
+  newRole      UserRole
+  createdAt    DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User   @relation("RoleChangeUser", fields: [userId], references: [id], onDelete: Cascade)
+  changedBy User   @relation("RoleChangeBy", fields: [changedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("role_changes")
+}
+
+// ── Module 09: Alerts & Notification Center ───────────────────────────────────
+
+model Notification {
+  id          String               @id @default(cuid())
+  tenantId    String
+  userId      String
+  type        NotificationType
+  title       String
+  body        String               @db.Text
+  severity    NotificationSeverity @default(INFO)
+  isRead      Boolean              @default(false)
+  readAt      DateTime?
+  actionUrl   String?
+  actionLabel String?
+  metadata    Json                 @default("{}")
+  expiresAt   DateTime?
+  createdAt   DateTime             @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, isRead, createdAt])
+  @@index([tenantId, userId, type, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id               String                      @id @default(cuid())
+  tenantId         String
+  userId           String
+  notificationType NotificationType
+  inApp            Boolean                     @default(true)
+  email            Boolean                     @default(true)
+  whatsapp         Boolean                     @default(false)
+  slack            Boolean                     @default(false)
+  sms              Boolean                     @default(false)
+  quietHoursStart  String?
+  quietHoursEnd    String?
+  digest           NotificationDigestFrequency @default(IMMEDIATE)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, notificationType])
+  @@map("notification_preferences")
+}
+
+model NotificationDigest {
+  id            String                      @id @default(cuid())
+  tenantId      String
+  userId        String
+  digestType    NotificationDigestFrequency
+  notifications Json                        @default("[]")
+  sentAt        DateTime?
+  periodStart   DateTime
+  periodEnd     DateTime
+  createdAt     DateTime                    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, digestType, periodEnd])
+  @@map("notification_digests")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
+}
+
+// ── Module 10: Settings Hub ───────────────────────────────────────────────────
+
+model WebhookEndpoint {
+  id             String    @id @default(cuid())
+  tenantId       String
+  url            String
+  secret         String
+  events         Json      @default("[]")
+  isActive       Boolean   @default(true)
+  lastDeliveryAt DateTime?
+  successRate    Float     @default(100)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, isActive])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  webhookId      String
+  tenantId       String
+  eventType      String
+  statusCode     Int?
+  responseTimeMs Int?
+  success        Boolean  @default(false)
+  payload        Json     @default("{}")
+  responseBody   String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  webhook WebhookEndpoint @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+// ── Module 11: Platform Admin Panel ───────────────────────────────────────────
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  supabaseId   String    @unique
+  email        String    @unique
+  fullName     String
+  role         AdminRole @default(SUPPORT)
+  permissions  Json      @default("[]")
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs              AdminAuditLog[]
+  announcementsCreated   PlatformAnnouncement[]
+  ticketsAssigned        SupportTicket[]        @relation("AssignedTickets")
+  featureFlagsUpdated    FeatureFlag[]
+
+  @@map("admin_users")
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String
+  targetType  String?
+  targetId    String?
+  details     Json     @default("{}")
+  ipAddress   String?
+  timestamp   DateTime @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId, timestamp])
+  @@index([targetType, targetId])
+  @@map("admin_audit_logs")
+}
+
+model PlatformAnnouncement {
+  id          String           @id @default(cuid())
+  title       String
+  body        String           @db.Text
+  type        AnnouncementType @default(FEATURE)
+  targetPlans TenantPlan[]     @default([])
+  scheduledAt DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean          @default(true)
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  createdBy AdminUser @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([isActive, scheduledAt])
+  @@map("platform_announcements")
+}
+
+model SupportTicket {
+  id           String                @id @default(cuid())
+  tenantId     String
+  userId       String?
+  subject      String
+  description  String                @db.Text
+  status       SupportTicketStatus   @default(OPEN)
+  priority     SupportTicketPriority @default(MEDIUM)
+  assignedToId String?
+  resolution   String?               @db.Text
+  createdAt    DateTime              @default(now())
+  resolvedAt   DateTime?
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedTo AdminUser? @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([assignedToId, status])
+  @@map("support_tickets")
+}
+
+model FeatureFlag {
+  id              String           @id @default(cuid())
+  key             String           @unique
+  description     String?
+  enabledFor      FeatureFlagScope @default(NONE)
+  targetTenantIds Json             @default("[]")
+  targetPlans     TenantPlan[]     @default([])
+  isEnabled       Boolean          @default(false)
+  updatedById     String?
+  updatedAt       DateTime         @updatedAt
+  createdAt       DateTime         @default(now())
+
+  updatedBy AdminUser? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("feature_flags")
+}

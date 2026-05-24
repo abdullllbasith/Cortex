@@ -1,0 +1,17 @@
+{
+  "triggerType": "EVENT",
+  "triggerConfig": { "eventType": "low_stock" },
+  "nodes": [
+    { "id": "t1", "type": "trigger.event", "position": { "x": 0, "y": 0 }, "data": { "label": "Low Stock", "config": { "eventType": "low_stock" } } },
+    { "id": "a1", "type": "action.ai_decision", "position": { "x": 250, "y": 0 }, "data": { "label": "Check Reorder Rules", "config": { "prompt": "Evaluate reorder quantity for product {{product.name}} with stock {{product.stock}}", "outputVariable": "reorder" } } },
+    { "id": "a2", "type": "action.generate_document", "position": { "x": 500, "y": 0 }, "data": { "label": "Generate PO", "config": { "documentType": "purchase_order", "data": { "productId": "{{product.id}}", "quantity": "{{reorder.quantity}}" } } } },
+    { "id": "a3", "type": "action.send_notification", "position": { "x": 750, "y": -50 }, "data": { "label": "Notify Supplier", "config": { "channel": "email", "recipient": "{{supplier.email}}", "message": "Purchase order ready for {{product.name}}" } } },
+    { "id": "a4", "type": "action.send_notification", "position": { "x": 750, "y": 50 }, "data": { "label": "Notify Manager", "config": { "channel": "slack", "recipient": "#inventory", "message": "Low stock reorder triggered for {{product.name}}" } } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a1" },
+    { "id": "e2", "source": "a1", "target": "a2" },
+    { "id": "e3", "source": "a2", "target": "a3" },
+    { "id": "e4", "source": "a2", "target": "a4" }
+  ]
+}

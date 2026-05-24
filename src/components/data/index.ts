@@ -1,6 +1,14 @@
 export { DataTable }           from './DataTable'
 export type { ColumnDef, DataTableProps, SortDirection } from './DataTable'
 
+export {
+  LazyDataTable,
+  LazyRevenueChart,
+  LazyWorkflowBuilder,
+  LazyFormRichText,
+  LazyChartPanel,
+} from '@/lib/lazy/components'
+
 export { DataTableToolbar }    from './DataTableToolbar'
 export type { DataTableToolbarProps, FilterChip } from './DataTableToolbar'
 

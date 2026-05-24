@@ -41,7 +41,7 @@ export const navSections: NavSection[] = [
   {
     label: 'INTELLIGENCE',
     items: [
-      { label: 'AI Assistant',   href: '/assistant', icon: Bot },
+      { label: 'AI Executive Assistant', href: '/assistant', icon: Bot },
       { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
       { label: 'Agents',         href: '/agents',    icon: Cpu },
     ],
@@ -57,7 +57,7 @@ export const navSections: NavSection[] = [
     label: 'OPERATIONS',
     items: [
       { label: 'Workflows', href: '/workflows', icon: GitBranch },
-      { label: 'Inventory', href: '/inventory', icon: Package, placeholder: true },
+      { label: 'Inventory', href: '/inventory', icon: Package },
     ],
   },
   {
@@ -71,7 +71,8 @@ export const navSections: NavSection[] = [
   {
     label: 'PLATFORM',
     items: [
-      { label: 'Alerts',   href: '/alerts',           icon: Bell },
+      { label: 'Notifications', href: '/notifications', icon: Bell },
+      { label: 'Alerts', href: '/alerts', icon: Bell, placeholder: true },
       { label: 'Settings', href: '/settings',          icon: Settings },
       { label: 'Billing',  href: '/settings/billing',  icon: CreditCard },
     ],

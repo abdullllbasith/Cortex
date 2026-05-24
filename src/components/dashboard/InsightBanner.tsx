@@ -1,27 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import useSWR from 'swr'
 import { Bot, RefreshCw, Sparkles } from 'lucide-react'
 import { Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 export function InsightBanner() {
-  const [refreshKey, setRefreshKey] = useState(0)
-  const { data, isLoading, mutate } = useSWR<ExecutiveData>(
-    `/api/analytics/executive?r=${refreshKey}`,
-  )
+  const { data, isLoading, mutate } = useExecutiveDashboard()
 
   const handleRefresh = () => {
-    setRefreshKey((k) => k + 1)
-    mutate()
+    void mutate()
   }
 
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-xl border border-indigo-200/60 bg-gradient-to-r',
+        'relative shrink-0 overflow-hidden rounded-xl border border-indigo-200/60 bg-gradient-to-r',
         'from-indigo-50 to-indigo-50/40 px-5 py-4',
         'dark:border-indigo-800/40 dark:from-indigo-950/40 dark:to-indigo-950/10',
       )}
@@ -32,7 +26,7 @@ export function InsightBanner() {
         className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-24 w-24 rounded-full bg-indigo-400/10 blur-2xl"
       />
 
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex items-start gap-4 min-h-[5.5rem]">
         {/* Icon */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 shadow-sm">
           <Bot className="h-5 w-5 text-white" aria-hidden="true" />

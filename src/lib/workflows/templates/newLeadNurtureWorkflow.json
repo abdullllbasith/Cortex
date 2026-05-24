@@ -1,0 +1,21 @@
+{
+  "triggerType": "EVENT",
+  "triggerConfig": { "eventType": "new_customer" },
+  "nodes": [
+    { "id": "t1", "type": "trigger.event", "position": { "x": 0, "y": 0 }, "data": { "label": "New Customer", "config": { "eventType": "new_customer" } } },
+    { "id": "d1", "type": "control.delay", "position": { "x": 200, "y": 0 }, "data": { "label": "Wait 1 Day", "config": { "duration": 1, "unit": "days" } } },
+    { "id": "a1", "type": "action.send_notification", "position": { "x": 400, "y": 0 }, "data": { "label": "Welcome Email", "config": { "channel": "email", "recipient": "{{customer.email}}", "message": "Welcome to SAIOS, {{customer.name}}!" } } },
+    { "id": "d2", "type": "control.delay", "position": { "x": 600, "y": 0 }, "data": { "label": "Wait 7 Days", "config": { "duration": 7, "unit": "days" } } },
+    { "id": "a2", "type": "action.send_notification", "position": { "x": 800, "y": 0 }, "data": { "label": "Send Offer", "config": { "channel": "email", "recipient": "{{customer.email}}", "message": "Special offer for {{customer.name}}" } } },
+    { "id": "c1", "type": "control.condition", "position": { "x": 1000, "y": 0 }, "data": { "label": "No Purchase?", "config": { "conditions": [{ "field": "customer.purchaseCount", "operator": "eq", "value": 0 }], "logic": "AND" } } },
+    { "id": "a3", "type": "action.send_notification", "position": { "x": 1200, "y": -50 }, "data": { "label": "Assign Sales Rep", "config": { "channel": "slack", "recipient": "#sales", "message": "Assign rep for {{customer.name}}" } } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "d1" },
+    { "id": "e2", "source": "d1", "target": "a1" },
+    { "id": "e3", "source": "a1", "target": "d2" },
+    { "id": "e4", "source": "d2", "target": "a2" },
+    { "id": "e5", "source": "a2", "target": "c1" },
+    { "id": "e6", "source": "c1", "target": "a3", "sourceHandle": "true" }
+  ]
+}

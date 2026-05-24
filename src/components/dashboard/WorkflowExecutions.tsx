@@ -1,11 +1,11 @@
 'use client'
 
-import useSWR from 'swr'
 import { GitBranch, ArrowRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Badge, Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData, WorkflowExecution } from './types'
+import type { WorkflowExecution } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 const statusConfig: Record<
   WorkflowExecution['status'],
@@ -18,7 +18,7 @@ const statusConfig: Record<
 
 export function WorkflowExecutions() {
   const router = useRouter()
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive')
+  const { data, isLoading } = useExecutiveDashboard()
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">

@@ -1,0 +1,17 @@
+{
+  "triggerType": "SCHEDULE",
+  "triggerConfig": { "cronExpression": "0 10 1 */3 *", "timezone": "UTC" },
+  "nodes": [
+    { "id": "t1", "type": "trigger.schedule", "position": { "x": 0, "y": 0 }, "data": { "label": "Quarterly Review", "config": { "cronExpression": "0 10 1 */3 *" } } },
+    { "id": "a1", "type": "action.ai_decision", "position": { "x": 250, "y": 0 }, "data": { "label": "Score Suppliers", "config": { "prompt": "Review supplier performance metrics", "outputVariable": "supplierScores" } } },
+    { "id": "c1", "type": "control.condition", "position": { "x": 500, "y": 0 }, "data": { "label": "Score Below 70?", "config": { "conditions": [{ "field": "supplier.score", "operator": "lt", "value": 70 }], "logic": "AND" } } },
+    { "id": "a2", "type": "action.send_notification", "position": { "x": 750, "y": 0 }, "data": { "label": "Review Meeting", "config": { "channel": "email", "recipient": "{{supplier.contact}}", "message": "Quarterly review scheduled for {{supplier.name}}" } } },
+    { "id": "a3", "type": "action.generate_document", "position": { "x": 750, "y": 100 }, "data": { "label": "Review Report", "config": { "documentType": "report", "data": { "supplier": "{{supplier.name}}", "scores": "{{supplierScores}}" } } } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a1" },
+    { "id": "e2", "source": "a1", "target": "c1" },
+    { "id": "e3", "source": "c1", "target": "a2", "sourceHandle": "true" },
+    { "id": "e4", "source": "c1", "target": "a3", "sourceHandle": "false" }
+  ]
+}

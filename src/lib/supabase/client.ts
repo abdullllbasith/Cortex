@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
+import { getSessionSnapshot } from '@/store/sessionStore'
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-/** Browser Supabase client — used for Storage uploads from form components */
+/** Browser Supabase client — optional direct access; uploads go through /api/storage/upload */
 export const supabase =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey)
@@ -21,8 +23,7 @@ export interface UploadResult {
 }
 
 /**
- * Upload a file to Supabase Storage with progress tracking.
- * Falls back to a local object URL when Supabase is not configured (dev).
+ * Upload via the server API so files get durable URLs (Supabase storage or local disk).
  */
 export async function uploadToStorage(
   file: File,
@@ -30,22 +31,44 @@ export async function uploadToStorage(
   path: string,
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<UploadResult> {
-  if (!supabase) {
-    /* Dev fallback — no real upload */
-    onProgress?.({ loaded: file.size, total: file.size, percentage: 100 })
-    const publicUrl = URL.createObjectURL(file)
-    return { path, publicUrl }
+  onProgress?.({ loaded: 0, total: file.size, percentage: 10 })
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('bucket', bucket)
+  formData.append('path', path)
+
+  const session = getSessionSnapshot()
+  const headers: Record<string, string> = {}
+  if (session.accessToken) headers.Authorization = `Bearer ${session.accessToken}`
+  if (session.tenant?.id) headers['x-tenant-id'] = session.tenant.id
+
+  const res = await fetch('/api/storage/upload', {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  onProgress?.({ loaded: file.size, total: file.size, percentage: 90 })
+
+  if (!res.ok) {
+    let message = 'Upload failed'
+    try {
+      const body = await res.json()
+      message =
+        (typeof body.error === 'object' && body.error?.message) ||
+        body.message ||
+        message
+    } catch {
+      /* non-json error */
+    }
+    throw new Error(message)
   }
 
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .upload(path, file, { upsert: true, cacheControl: '3600' })
-
-  if (error) throw new Error(error.message)
-
-  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path)
+  const json = await res.json()
+  const data = json.data ?? json
 
   onProgress?.({ loaded: file.size, total: file.size, percentage: 100 })
 
-  return { path: data.path, publicUrl: urlData.publicUrl }
+  return { path: data.path, publicUrl: data.publicUrl }
 }

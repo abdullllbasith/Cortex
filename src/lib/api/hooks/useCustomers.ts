@@ -5,35 +5,54 @@ import useSWRMutation from 'swr/mutation'
 import { apiClient } from '@/lib/api/apiClient'
 import { queryKeys } from '@/lib/api/queryKeys'
 import { useSessionStore } from '@/store/sessionStore'
-import type { Customer, ListParams, PaginatedResponse } from '@/lib/api/types'
+import type { ListParams, PaginatedResponse } from '@/lib/api/types'
+
+export interface CustomerRecord {
+  id: string
+  profile: Record<string, unknown>
+  purchaseHistory?: unknown[]
+  embeddingStatus?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CustomerCreatePayload {
+  profile: {
+    name: string
+    email: string
+    company?: string
+    tier?: string
+    region?: string
+  }
+}
 
 export function useCustomers(params?: ListParams) {
   const tenantId = useSessionStore((s) => s.tenant?.id ?? 'default')
 
-  return useSWR<PaginatedResponse<Customer>>(
+  return useSWR<PaginatedResponse<CustomerRecord>>(
     queryKeys.customers.list(tenantId, params),
-    () => apiClient.get<PaginatedResponse<Customer>>('/customers', { params }),
+    () => apiClient.get<PaginatedResponse<CustomerRecord>>('/customers', { params }),
   )
 }
 
 export function useCustomer(id?: string) {
-  return useSWR<Customer>(
+  return useSWR<CustomerRecord>(
     id ? queryKeys.customers.detail(id) : null,
-    () => apiClient.get<Customer>(`/customers/${id}`),
+    () => apiClient.get<CustomerRecord>(`/customers/${id}`),
   )
 }
 
 export function useMutateCustomer() {
   const create = useSWRMutation(
     queryKeys.customers.all,
-    (_key, { arg }: { arg: Partial<Customer> }) =>
-      apiClient.post<Customer>('/customers', arg),
+    (_key, { arg }: { arg: CustomerCreatePayload }) =>
+      apiClient.post<CustomerRecord>('/customers', arg),
   )
 
   const update = useSWRMutation(
     queryKeys.customers.all,
-    (_key, { arg }: { arg: { id: string; data: Partial<Customer> } }) =>
-      apiClient.patch<Customer>(`/customers/${arg.id}`, arg.data),
+    (_key, { arg }: { arg: { id: string; data: Partial<CustomerCreatePayload> & { version: number } } }) =>
+      apiClient.patch<CustomerRecord>(`/customers/${arg.id}`, arg.data),
   )
 
   const remove = useSWRMutation(

@@ -1,15 +1,15 @@
 'use client'
 
-import useSWR from 'swr'
 import { TrendingUp, ArrowRight, Calendar } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Badge, Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData, Prediction } from './types'
+import type { Prediction } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 export function PredictionsWidget() {
   const router = useRouter()
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive')
+  const { data, isLoading } = useExecutiveDashboard()
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">

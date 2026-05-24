@@ -2,36 +2,40 @@ import { SidebarProvider } from '@/lib/sidebar-context'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { MobileSidebar } from '@/components/layout/MobileSidebar'
-
-// TODO: Replace with real auth session check (Module 01)
-// import { redirect } from 'next/navigation'
-// import { getSession } from '@/lib/auth'
-// const session = await getSession()
-// if (!session) redirect('/login')
+import { BottomNav } from '@/components/layout/BottomNav'
+import { NotificationProvider } from '@/components/notifications/NotificationProvider'
+import { ImpersonationBanner } from '@/components/admin/ImpersonationBanner'
+import { TenantBrandingProvider } from '@/components/branding/TenantBrandingProvider'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
-      <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
-        {/* Desktop sidebar — hidden below lg */}
-        <div className="hidden lg:flex">
-          <Sidebar />
-        </div>
+      <NotificationProvider>
+        <TenantBrandingProvider>
+        <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+          <ImpersonationBanner />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="hidden md:flex">
+            <Sidebar />
+          </div>
 
-        {/* Mobile drawer — visible below lg */}
-        <MobileSidebar />
+          <MobileSidebar />
 
-        {/* Main area */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <TopBar />
-          <main
-            id="main-content"
-            className="flex-1 overflow-y-auto bg-white dark:bg-slate-900"
-          >
-            {children}
-          </main>
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <TopBar />
+            <main
+              id="main-content"
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-white pb-16 dark:bg-slate-900 md:pb-0"
+            >
+              {children}
+            </main>
+          </div>
+
+          <BottomNav />
+          </div>
         </div>
-      </div>
+        </TenantBrandingProvider>
+      </NotificationProvider>
     </SidebarProvider>
   )
 }

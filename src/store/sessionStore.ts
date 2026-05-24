@@ -18,6 +18,7 @@ interface SessionState {
     refreshToken?: string
   }) => void
   setTokens: (accessToken: string, refreshToken?: string) => void
+  updateUser: (patch: Partial<User>) => void
   clearSession: () => void
   hasPermission: (permission: string) => boolean
 }
@@ -38,6 +39,11 @@ export const useSessionStore = create<SessionState>()(
         set((s) => ({
           accessToken,
           refreshToken: refreshToken ?? s.refreshToken,
+        })),
+
+      updateUser: (patch) =>
+        set((s) => ({
+          user: s.user ? { ...s.user, ...patch } : s.user,
         })),
 
       clearSession: () =>

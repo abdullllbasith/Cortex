@@ -31,7 +31,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'flex flex-col gap-1 px-6 py-4',
+        'flex flex-col gap-1 px-4 py-3 md:px-6 lg:px-8',
         !borderless && 'border-b border-slate-100 dark:border-slate-800',
         className,
       )}
@@ -81,11 +81,11 @@ export function PageHeader({
       {/* Title row */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-0.5 min-w-0">
-          <h1 className="font-display text-xl font-semibold leading-tight text-slate-900 dark:text-slate-100 truncate">
+          <h1 className="font-display text-lg font-semibold leading-snug tracking-tight text-slate-900 dark:text-slate-100 truncate">
             {title}
           </h1>
           {subtitle && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {subtitle}
             </p>
           )}

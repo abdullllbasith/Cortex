@@ -8,14 +8,19 @@ import { Avatar, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
 import { navSections, isNavItemActive, type NavItem } from './nav-config'
+import { useSessionStore } from '@/store/sessionStore'
+import { formatUserRole } from '@/lib/auth/displayUser'
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   MobileSidebar — overlay drawer for screens < lg
+   MobileSidebar — full-screen overlay drawer for screens < md
    ───────────────────────────────────────────────────────────────────────────── */
 
 export function MobileSidebar() {
   const { mobileOpen, closeMobile } = useSidebar()
   const pathname = usePathname()
+  const user = useSessionStore((s) => s.user)
+  const displayName = user?.name ?? 'User'
+  const roleLabel = formatUserRole(user?.role)
 
   return (
     <DialogPrimitive.Root open={mobileOpen} onOpenChange={(o) => !o && closeMobile()}>
@@ -23,17 +28,16 @@ export function MobileSidebar() {
         {/* Backdrop */}
         <DialogPrimitive.Overlay
           className={cn(
-            'fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden',
+            'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden',
             'data-[state=open]:animate-fadeIn data-[state=closed]:animate-fadeOut',
           )}
         />
 
-        {/* Drawer panel — slides in from left */}
         <DialogPrimitive.Content
           aria-label="Navigation"
           className={cn(
-            'fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col lg:hidden',
-            'bg-slate-950 border-r border-slate-800/60 shadow-xl',
+            'fixed inset-0 z-40 flex flex-col md:hidden',
+            'bg-slate-950 shadow-xl',
             'data-[state=open]:animate-slideInLeft',
             'focus:outline-none',
           )}
@@ -85,10 +89,10 @@ export function MobileSidebar() {
 
           {/* User footer */}
           <div className="flex shrink-0 items-center gap-3 border-t border-slate-800/60 px-3 py-3">
-            <Avatar name="Abdul Basith" size="sm" status="online" />
+            <Avatar name={displayName} src={user?.avatarUrl} size="sm" status="online" />
             <div className="flex min-w-0 flex-1 flex-col leading-none">
-              <span className="truncate text-xs font-semibold text-slate-200">Abdul Basith</span>
-              <span className="truncate text-[10px] text-slate-500">Administrator</span>
+              <span className="truncate text-xs font-semibold text-slate-200">{displayName}</span>
+              <span className="truncate text-[10px] text-slate-500">{roleLabel}</span>
             </div>
           </div>
         </DialogPrimitive.Content>

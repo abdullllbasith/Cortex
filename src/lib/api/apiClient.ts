@@ -1,5 +1,6 @@
-import { ApiError } from './types'
+import { ApiError, formatApiErrorMessage } from './types'
 import { getSessionSnapshot, useSessionStore } from '@/store/sessionStore'
+import { getAdminSessionSnapshot, useAdminSessionStore } from '@/store/adminSessionStore'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Configuration
@@ -19,16 +20,37 @@ function sleep(ms: number): Promise<void> {
 }
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
-  const base = path.startsWith('http') ? path : `${BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
-  if (!params) return base
+  if (path.startsWith('http')) {
+    if (!params) return path
+    const search = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') search.set(k, String(v))
+    }
+    const qs = search.toString()
+    return qs ? `${path}${path.includes('?') ? '&' : '?'}${qs}` : path
+  }
+
+  const [pathname, embeddedQs] = path.split('?')
+  let normalized = pathname.replace(/^\//, '')
+  const base = BASE_URL.replace(/\/$/, '')
+
+  // Prevent /api/api/... when callers pass paths like /api/analytics/executive
+  if (base.endsWith('/api') && normalized.startsWith('api/')) {
+    normalized = normalized.slice(4)
+  }
+
+  let url = `${base}/${normalized}`
   const search = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== '') {
-      search.set(k, String(v))
+  if (embeddedQs) {
+    new URLSearchParams(embeddedQs).forEach((v, k) => search.set(k, v))
+  }
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') search.set(k, String(v))
     }
   }
   const qs = search.toString()
-  return qs ? `${base}?${qs}` : base
+  return qs ? `${url}?${qs}` : url
 }
 
 async function parseErrorResponse(res: Response): Promise<ApiError> {
@@ -39,39 +61,80 @@ async function parseErrorResponse(res: Response): Promise<ApiError> {
     /* non-JSON error body */
   }
 
-  const message =
-    (body.message as string) ??
-    (body.error as string) ??
-    res.statusText ??
-    'Request failed'
+  const nestedError =
+    body.error && typeof body.error === 'object' && !Array.isArray(body.error)
+      ? (body.error as { message?: string; code?: string; details?: Record<string, unknown> })
+      : null
+
+  const messageCandidates = [
+    nestedError?.message,
+    body.message,
+    typeof body.error === 'string' ? body.error : body.error,
+  ]
+
+  let message = res.statusText || 'Request failed'
+  for (const candidate of messageCandidates) {
+    if (candidate == null) continue
+    const formatted = formatApiErrorMessage(candidate)
+    if (formatted !== 'Request failed') {
+      message = formatted
+      break
+    }
+  }
+
+  const code =
+    (typeof nestedError?.code === 'string' ? nestedError.code : undefined) ??
+    (typeof body.code === 'string' ? body.code : undefined) ??
+    `HTTP_${res.status}`
 
   return new ApiError(
-    message,
+    formatApiErrorMessage(message),
     res.status,
-    (body.code as string) ?? `HTTP_${res.status}`,
-    body.details as Record<string, unknown> | undefined,
+    code,
+    (nestedError?.details ?? body.details) as Record<string, unknown> | undefined,
   )
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken } = getSessionSnapshot()
-  if (!refreshToken) return null
-
-  try {
-    const res = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    })
-
-    if (!res.ok) return null
-
-    const data = await res.json() as { accessToken: string; refreshToken?: string }
-    useSessionStore.getState().setTokens(data.accessToken, data.refreshToken)
-    return data.accessToken
-  } catch {
-    return null
+function unwrapApiEnvelope<T>(json: unknown): T {
+  if (
+    json &&
+    typeof json === 'object' &&
+    'success' in json &&
+    (json as { success: boolean }).success === true &&
+    'data' in json
+  ) {
+    const envelope = json as { data: unknown; meta?: Record<string, unknown> }
+    const meta = envelope.meta
+    if (meta && Array.isArray(envelope.data) && typeof meta.total === 'number') {
+      return {
+        data: envelope.data,
+        total: meta.total,
+        page: meta.page ?? 1,
+        limit: meta.limit ?? envelope.data.length,
+      } as T
+    }
+    return envelope.data as T
   }
+  return json as T
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    const accessToken = json.data?.accessToken as string | undefined
+    if (accessToken) {
+      useSessionStore.getState().setTokens(accessToken)
+      return accessToken
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 function redirectToLogin() {
@@ -79,6 +142,18 @@ function redirectToLogin() {
     useSessionStore.getState().clearSession()
     window.location.href = '/login'
   }
+}
+
+function redirectToAdminLogin() {
+  if (typeof window !== 'undefined') {
+    useAdminSessionStore.getState().clearSession()
+    window.location.href = '/admin/login'
+  }
+}
+
+function isAdminApiPath(path: string): boolean {
+  const normalized = path.replace(/^\//, '')
+  return normalized.startsWith('admin/') || normalized.startsWith('api/admin/')
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -115,6 +190,7 @@ async function request<T>(
   const url = buildUrl(path, params)
 
   const session = getSessionSnapshot()
+  const adminSession = getAdminSessionSnapshot()
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...extraHeaders,
@@ -124,12 +200,18 @@ async function request<T>(
     headers['Content-Type'] = 'application/json'
   }
 
-  if (!isPublic && session.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`
+  if (!isPublic) {
+    if (isAdminApiPath(path) && adminSession.accessToken) {
+      headers['Authorization'] = `Bearer ${adminSession.accessToken}`
+    } else if (session.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`
+    }
   }
 
   if (session.tenant?.id) {
     headers['x-tenant-id'] = session.tenant.id
+  } else if (process.env.NODE_ENV === 'development') {
+    headers['x-tenant-id'] = 'dev-tenant-1'
   }
 
   const res = await fetch(url, {
@@ -141,6 +223,10 @@ async function request<T>(
 
   /* 401 — refresh token → retry once → redirect */
   if (res.status === 401 && !retried401 && !isPublic) {
+    if (isAdminApiPath(path)) {
+      redirectToAdminLogin()
+      throw new ApiError('Admin session expired', 401, 'UNAUTHORIZED')
+    }
     const newToken = await refreshAccessToken()
     if (newToken) return request<T>(method, path, body, options, true, retry5xx)
     redirectToLogin()
@@ -169,7 +255,8 @@ async function request<T>(
 
   if (res.status === 204) return undefined as T
 
-  return res.json() as Promise<T>
+  const json = await res.json()
+  return unwrapApiEnvelope<T>(json)
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -245,8 +332,22 @@ export const apiClient = {
   upload,
 }
 
-/** SWR-compatible fetcher */
+/** SWR-compatible fetcher — uses apiClient (envelope already unwrapped) */
 export async function swrFetcher<T>(key: string | [string, ...unknown[]]): Promise<T> {
   const path = Array.isArray(key) ? (key[0] as string) : key
   return apiClient.get<T>(path)
+}
+
+/** Normalize list API responses — plain arrays or `{ data: T[] }` paginated envelopes */
+export function normalizeApiList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value
+  if (
+    value &&
+    typeof value === 'object' &&
+    'data' in value &&
+    Array.isArray((value as { data: unknown }).data)
+  ) {
+    return (value as { data: T[] }).data
+  }
+  return []
 }

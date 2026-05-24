@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { emailSchema, slugSchema } from '@/lib/schemas'
-import { FORM_MESSAGES } from '@/lib/forms/formConfig'
+import { FORM_MESSAGES } from '@/lib/forms/formMessages'
 
 export const loginSchema = z.object({
   email: emailSchema,

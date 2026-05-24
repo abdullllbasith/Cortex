@@ -1,9 +1,29 @@
 'use client'
 
 import { Button } from '@/components/ui'
-import { signInWithOAuth } from '@/lib/supabase/auth'
+import { createSupabaseBrowserClient } from '@/lib/auth/supabaseClient'
 
-export function OAuthButtons() {
+interface OAuthButtonsProps {
+  tenantSlug?: string | null
+}
+
+export function OAuthButtons({ tenantSlug }: OAuthButtonsProps) {
+  async function oauth(provider: 'google' | 'azure') {
+    const supabase = createSupabaseBrowserClient()
+    if (!supabase) {
+      window.location.href = '/setup'
+      return
+    }
+    const redirectTo = tenantSlug
+      ? `https://${tenantSlug}.saios.app/login`
+      : `${window.location.origin}/login`
+
+    await supabase.auth.signInWithOAuth({
+      provider: provider === 'azure' ? 'azure' : 'google',
+      options: { redirectTo },
+    })
+  }
+
   return (
     <div className="space-y-3">
       <div className="relative">
@@ -23,7 +43,7 @@ export function OAuthButtons() {
           variant="secondary"
           size="md"
           className="w-full"
-          onClick={() => signInWithOAuth('google')}
+          onClick={() => oauth('google')}
         >
           <GoogleIcon />
           Google
@@ -33,7 +53,7 @@ export function OAuthButtons() {
           variant="secondary"
           size="md"
           className="w-full"
-          onClick={() => signInWithOAuth('azure')}
+          onClick={() => oauth('azure')}
         >
           <MicrosoftIcon />
           Microsoft

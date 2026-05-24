@@ -62,7 +62,8 @@ function Sparkline({
   const color = positive ? '#22c55e' : '#ef4444'
 
   return (
-    <ResponsiveContainer width="100%" height={40}>
+    <div className="h-10 w-full min-w-0">
+      <ResponsiveContainer width="100%" height={40} minWidth={0}>
       <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
         <Line
           type="monotone"
@@ -74,6 +75,7 @@ function Sparkline({
         />
       </LineChart>
     </ResponsiveContainer>
+    </div>
   )
 }
 

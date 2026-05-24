@@ -17,14 +17,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const base =
   'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-2 ' +
   'disabled:pointer-events-none disabled:opacity-50 shrink-0 whitespace-nowrap'
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-indigo-600 text-white shadow-sm ' +
-    'hover:bg-indigo-500 active:bg-indigo-700 ' +
-    'dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:active:bg-indigo-600',
+    'bg-[var(--color-brand)] text-white shadow-sm ' +
+    'hover:bg-[var(--color-brand-hover)] active:bg-[var(--color-brand-active)]',
   secondary:
     'bg-white text-slate-700 border border-slate-200 shadow-sm ' +
     'hover:bg-slate-50 active:bg-slate-100 ' +
@@ -38,9 +37,8 @@ const variantClasses: Record<ButtonVariant, string> = {
     'focus-visible:ring-red-500 ' +
     'dark:bg-red-500 dark:hover:bg-red-400 dark:active:bg-red-600',
   outline:
-    'border border-indigo-600 text-indigo-600 ' +
-    'hover:bg-indigo-50 active:bg-indigo-100 ' +
-    'dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-950 dark:active:bg-indigo-900',
+    'border border-[var(--color-brand)] text-[var(--color-brand)] ' +
+    'hover:bg-[var(--color-brand-subtle)] active:bg-[var(--color-brand-muted)]',
 }
 
 const sizeClasses: Record<ButtonSize, string> = {

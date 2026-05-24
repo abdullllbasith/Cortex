@@ -27,6 +27,7 @@ export type { FormFileUploadProps, UploadedFile } from './FormFileUpload'
 
 export { FormRichText } from './FormRichText'
 export type { FormRichTextProps } from './FormRichText'
+export { LazyFormRichText } from '@/lib/lazy/components'
 
 export { FormColorPicker } from './FormColorPicker'
 export type { FormColorPickerProps } from './FormColorPicker'

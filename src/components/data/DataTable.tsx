@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui'
 import { Skeleton } from '@/components/ui'
 import { EmptyState } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Types
@@ -56,6 +57,8 @@ export interface DataTableProps<TData extends Record<string, unknown>> {
   emptyDescription?: string
   /** Columns to hide (by id) */
   hiddenColumns?: Set<string>
+  /** Column ids to highlight in mobile card view (defaults to first 3 visible) */
+  mobileColumns?: string[]
   className?: string
 }
 
@@ -94,6 +97,115 @@ function SortIcon({ colId, sortKey, direction }: { colId: string; sortKey?: stri
     : <ChevronDown className="h-3 w-3 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
 }
 
+function DataTableMobileCards<TData extends Record<string, unknown>>({
+  columns,
+  data,
+  loading,
+  onRowClick,
+  rowActions,
+  emptyState,
+  emptyTitle,
+  emptyDescription,
+  mobileColumns,
+  rowKey,
+}: {
+  columns: ColumnDef<TData>[]
+  data: TData[]
+  loading?: boolean
+  onRowClick?: (row: TData) => void
+  rowActions?: (row: TData) => React.ReactNode
+  emptyState?: React.ReactNode
+  emptyTitle?: string
+  emptyDescription?: string
+  mobileColumns?: string[]
+  rowKey: (row: TData) => string
+}) {
+  const cardCols = mobileColumns?.length
+    ? columns.filter((c) => mobileColumns.includes(c.id))
+    : columns.filter((c) => c.type !== 'actions').slice(0, 3)
+
+  if (loading) {
+    return (
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="space-y-2 p-4">
+            <Skeleton height="14px" className="w-2/3 rounded" />
+            <Skeleton height="12px" className="w-1/2 rounded" />
+            <Skeleton height="12px" className="w-1/3 rounded" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="px-6 py-12">
+        {emptyState ?? (
+          <EmptyState
+            title={emptyTitle ?? 'No data found'}
+            description={emptyDescription ?? 'No records match your current filters.'}
+          />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800" role="list">
+      {data.map((row, rowIdx) => {
+        const primary = cardCols[0]
+        const primaryValue = primary?.accessorKey ? row[primary.accessorKey] : undefined
+
+        return (
+          <li key={rowKey(row)}>
+            <button
+              type="button"
+              onClick={() => onRowClick?.(row)}
+              className={cn(
+                'w-full p-4 text-left transition-colors',
+                onRowClick && 'hover:bg-slate-50 dark:hover:bg-slate-800/30',
+              )}
+            >
+              {primary && (
+                <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  {primary.cell
+                    ? primary.cell({ row, value: primaryValue, index: rowIdx })
+                    : formatCell(primaryValue, primary.type)}
+                </p>
+              )}
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {cardCols.slice(1).map((col) => {
+                  const value = col.accessorKey ? row[col.accessorKey] : undefined
+                  return (
+                    <div key={col.id}>
+                      <dt className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                        {col.header}
+                      </dt>
+                      <dd className="text-xs text-slate-700 dark:text-slate-300">
+                        {col.cell
+                          ? col.cell({ row, value, index: rowIdx })
+                          : formatCell(value, col.type)}
+                      </dd>
+                    </div>
+                  )
+                })}
+              </dl>
+
+              {rowActions && (
+                <div className="mt-3 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                  {rowActions(row)}
+                </div>
+              )}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    DataTable
    ───────────────────────────────────────────────────────────────────────────── */
@@ -116,8 +228,10 @@ export function DataTable<TData extends Record<string, unknown>>({
   emptyTitle = 'No data found',
   emptyDescription = 'No records match your current filters.',
   hiddenColumns = new Set(),
+  mobileColumns,
   className,
 }: DataTableProps<TData>) {
+  const isMobile = useIsMobile()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const resizeRef = useRef<{ colId: string; startX: number; startW: number } | null>(null)
@@ -205,6 +319,25 @@ export function DataTable<TData extends Record<string, unknown>>({
 
   const skeletonRows = Array.from({ length: 5 })
   const isEmpty = !loading && data.length === 0
+
+  if (isMobile) {
+    return (
+      <div className={cn('flex flex-col rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden', className)}>
+        <DataTableMobileCards
+          columns={visibleCols}
+          data={data}
+          loading={loading}
+          onRowClick={onRowClick}
+          rowActions={rowActions}
+          emptyState={emptyState}
+          emptyTitle={emptyTitle}
+          emptyDescription={emptyDescription}
+          mobileColumns={mobileColumns}
+          rowKey={rowKey}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden', className)}>

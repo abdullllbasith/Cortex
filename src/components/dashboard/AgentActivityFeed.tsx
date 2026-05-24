@@ -1,10 +1,10 @@
 'use client'
 
-import useSWR from 'swr'
 import { Activity } from 'lucide-react'
 import { Badge, Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData, AgentActivity } from './types'
+import type { AgentActivity } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 const typeConfig: Record<AgentActivity['type'], { label: string; variant: 'danger' | 'info' | 'warning' | 'success' }> = {
   alert:     { label: 'Alert',     variant: 'danger'  },
@@ -14,9 +14,7 @@ const typeConfig: Record<AgentActivity['type'], { label: string; variant: 'dange
 }
 
 export function AgentActivityFeed() {
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive', {
-    refreshInterval: 10_000,
-  })
+  const { data, isLoading } = useExecutiveDashboard()
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900 h-full">

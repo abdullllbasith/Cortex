@@ -1,11 +1,10 @@
 'use client'
 
-import useSWR from 'swr'
 import { MetricCard } from './MetricCard'
-import type { ExecutiveData } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 export function KpiStrip() {
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive')
+  const { data, isLoading } = useExecutiveDashboard()
 
   const cards = [
     {
@@ -50,7 +49,7 @@ export function KpiStrip() {
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid-kpi-strip">
       {cards.map((card, i) => (
         <MetricCard
           key={i}

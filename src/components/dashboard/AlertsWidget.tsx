@@ -1,16 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import useSWR from 'swr'
 import { Bell, X, ArrowRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Badge, Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { ExecutiveData } from './types'
+import { useExecutiveDashboard } from './ExecutiveDashboardProvider'
 
 export function AlertsWidget() {
   const router = useRouter()
-  const { data, isLoading } = useSWR<ExecutiveData>('/api/analytics/executive')
+  const { data, isLoading } = useExecutiveDashboard()
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   const alerts = data?.alerts.filter((a) => !dismissed.has(a.id)) ?? []

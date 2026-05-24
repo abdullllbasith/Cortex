@@ -1,29 +1,28 @@
 import type { Metadata } from 'next'
 import { WelcomeRow } from '@/components/dashboard/WelcomeRow'
 import { InsightBanner } from '@/components/dashboard/InsightBanner'
-import { RevenueChart } from '@/components/dashboard/RevenueChart'
 import { AgentActivityFeed } from '@/components/dashboard/AgentActivityFeed'
 import { AlertsWidget } from '@/components/dashboard/AlertsWidget'
 import { WorkflowExecutions } from '@/components/dashboard/WorkflowExecutions'
 import { PredictionsWidget } from '@/components/dashboard/PredictionsWidget'
 import { RecentTransactionsTable } from '@/components/dashboard/RecentTransactionsTable'
 import { KpiStrip } from '@/components/dashboard/KpiStrip'
+import { DashboardShell } from '@/components/dashboard/DashboardShell'
+import { ResponsiveContainer } from '@/components/layout/ResponsiveContainer'
+import { LazyRevenueChart } from '@/lib/lazy/components'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
 export default function DashboardPage() {
   return (
-    <div className="flex min-h-full flex-col gap-5 p-5 lg:p-6">
+    <DashboardShell>
+      <ResponsiveContainer className="flex flex-col gap-5 py-5 lg:py-6">
       <WelcomeRow />
       <KpiStrip />
       <InsightBanner />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <RevenueChart />
-        </div>
-        <div className="lg:col-span-2">
-          <AgentActivityFeed />
-        </div>
+      <div className="grid-analytics-two-col">
+        <LazyRevenueChart />
+        <AgentActivityFeed />
       </div>
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <AlertsWidget />
@@ -31,6 +30,7 @@ export default function DashboardPage() {
         <PredictionsWidget />
       </div>
       <RecentTransactionsTable />
-    </div>
+      </ResponsiveContainer>
+    </DashboardShell>
   )
 }

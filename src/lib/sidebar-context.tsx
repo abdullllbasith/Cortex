@@ -34,6 +34,16 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     if (stored !== null) setCollapsedState(stored === 'true')
   }, [])
 
+  // Close mobile drawer when viewport reaches tablet+
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 768px)')
+    const handler = () => {
+      if (mql.matches) setMobileOpen(false)
+    }
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [])
+
   const setCollapsed = useCallback((v: boolean) => {
     setCollapsedState(v)
     localStorage.setItem(STORAGE_KEY, String(v))

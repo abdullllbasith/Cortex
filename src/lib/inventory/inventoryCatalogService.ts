@@ -1,0 +1,444 @@
+import { Prisma, StockTransactionType } from '@prisma/client'
+import { Decimal } from '@prisma/client/runtime/library'
+import { prisma } from '@/lib/db/prisma'
+import { recordTransaction } from './stockEngine'
+import { classifyStock, type StockHealth } from './inventoryDashboardService'
+import { computeGrossMargin } from './valuationService'
+
+function toNumber(value: Decimal | number | null | undefined): number {
+  if (value == null) return 0
+  return typeof value === 'number' ? value : value.toNumber()
+}
+
+function toDecimal(value: number): Decimal {
+  return new Decimal(value)
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function buildProductSku(provided?: unknown): string {
+  return normalizeOptionalString(provided) ?? `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function buildProductSlug(name: string, provided?: unknown): string {
+  const normalized = normalizeOptionalString(provided)
+  if (normalized) return normalized
+  const base = String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+  return `${base || 'product'}-${Date.now().toString(36)}`
+}
+
+async function resolveAuditUserId(actorId?: string): Promise<string | null> {
+  if (!actorId) return null
+  const user = await prisma.user.findFirst({ where: { id: actorId }, select: { id: true } })
+  return user?.id ?? null
+}
+
+export interface CatalogFilters {
+  page?: number
+  limit?: number
+  search?: string
+  categoryId?: string
+  supplierId?: string
+  status?: 'active' | 'inactive' | 'all'
+  stockHealth?: StockHealth
+}
+
+export async function listCatalogProducts(tenantId: string, filters: CatalogFilters = {}) {
+  const page = filters.page ?? 1
+  const limit = filters.limit ?? 24
+
+  const where: Prisma.ProductWhereInput = {
+    tenantId,
+    ...(filters.search
+      ? {
+          OR: [
+            { name: { contains: filters.search, mode: 'insensitive' } },
+            { sku: { contains: filters.search, mode: 'insensitive' } },
+            { barcode: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+    ...(filters.categoryId && { categoryId: filters.categoryId }),
+    ...(filters.supplierId && { supplierId: filters.supplierId }),
+    ...(filters.status === 'active' && { isActive: true }),
+    ...(filters.status === 'inactive' && { isActive: false }),
+  }
+
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        category: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true } },
+        stockBalances: {
+          select: { quantityOnHand: true, quantityOnOrder: true },
+        },
+      },
+    }),
+    prisma.product.count({ where }),
+  ])
+
+  let items = products.map((p) => {
+    const onHand = p.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0)
+    const onOrder = p.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnOrder), 0)
+    const reorderPoint = toNumber(p.reorderPoint)
+    return {
+      id: p.id,
+      sku: p.sku,
+      barcode: p.barcode,
+      name: p.name,
+      slug: p.slug,
+      description: p.description,
+      category: p.category,
+      supplier: p.supplier,
+      unit: p.unit,
+      costPrice: toNumber(p.costPrice),
+      sellingPrice: toNumber(p.sellingPrice),
+      imageUrls: p.imageUrls,
+      isActive: p.isActive,
+      trackInventory: p.trackInventory,
+      onHand,
+      onOrder,
+      reorderPoint,
+      stockHealth: classifyStock(onHand, reorderPoint),
+    }
+  })
+
+  if (filters.stockHealth) {
+    items = items.filter((i) => i.stockHealth === filters.stockHealth)
+  }
+
+  return { items, total, page, limit }
+}
+
+export async function getProductDetail(tenantId: string, productId: string) {
+  const product = await prisma.product.findFirst({
+    where: { id: productId, tenantId },
+    include: {
+      category: true,
+      supplier: { select: { id: true, name: true, supplierInfo: true } },
+      variants: {
+        include: {
+          stockBalances: {
+            include: { warehouse: { select: { id: true, name: true, code: true } } },
+          },
+        },
+      },
+      stockBalances: {
+        include: { warehouse: { select: { id: true, name: true, code: true } } },
+      },
+    },
+  })
+  if (!product) return null
+
+  const onHand = product.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0)
+  const reorderPoint = toNumber(product.reorderPoint)
+
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000)
+  const ledgerEntries = await prisma.stockLedger.findMany({
+    where: { tenantId, productId, createdAt: { gte: ninetyDaysAgo } },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true, quantity: true, transactionType: true },
+  })
+
+  let running = 0
+  const stockTrend = ledgerEntries.map((entry) => {
+    const qty = toNumber(entry.quantity)
+    if (['PURCHASE', 'TRANSFER_IN', 'RETURN_IN', 'OPENING'].includes(entry.transactionType)) {
+      running += Math.abs(qty)
+    } else if (['SALE', 'TRANSFER_OUT', 'RETURN_OUT', 'DAMAGE', 'WRITE_OFF'].includes(entry.transactionType)) {
+      running -= Math.abs(qty)
+    } else if (entry.transactionType === 'ADJUSTMENT') {
+      running += qty
+    }
+    return {
+      date: entry.createdAt.toISOString().slice(0, 10),
+      quantityOnHand: Math.max(0, running),
+    }
+  })
+
+  const periodEnd = new Date()
+  const periodStart = new Date(Date.now() - 30 * 86400000)
+  const margin = await computeGrossMargin(tenantId, productId, { start: periodStart, end: periodEnd })
+
+  const salesByWeek = await prisma.stockLedger.groupBy({
+    by: ['createdAt'],
+    where: {
+      tenantId,
+      productId,
+      transactionType: 'SALE',
+      createdAt: { gte: periodStart },
+    },
+    _sum: { quantity: true },
+  })
+
+  const totalSold = salesByWeek.reduce((s, r) => s + Math.abs(toNumber(r._sum.quantity)), 0)
+  const revenueProxy = totalSold * toNumber(product.sellingPrice)
+
+  let abcClass: 'A' | 'B' | 'C' = 'C'
+  const allProducts = await prisma.product.findMany({
+    where: { tenantId, isActive: true },
+    select: { id: true, sellingPrice: true, inventoryLevel: true },
+  })
+  const productRevenues = await Promise.all(
+    allProducts.map(async (p) => {
+      const sold = await prisma.stockLedger.aggregate({
+        where: {
+          tenantId,
+          productId: p.id,
+          transactionType: 'SALE',
+          createdAt: { gte: periodStart },
+        },
+        _sum: { quantity: true },
+      })
+      return {
+        id: p.id,
+        revenue: Math.abs(toNumber(sold._sum.quantity)) * toNumber(p.sellingPrice),
+      }
+    }),
+  )
+  const sorted = productRevenues.sort((a, b) => b.revenue - a.revenue)
+  const totalRev = sorted.reduce((s, p) => s + p.revenue, 0)
+  if (totalRev > 0) {
+    let cumulative = 0
+    for (const row of sorted) {
+      cumulative += row.revenue / totalRev
+      if (row.id === productId) {
+        abcClass = cumulative <= 0.8 ? 'A' : cumulative <= 0.95 ? 'B' : 'C'
+        break
+      }
+    }
+  }
+
+  return {
+    ...product,
+    imageUrls: product.imageUrls ?? [],
+    costPrice: toNumber(product.costPrice),
+    sellingPrice: toNumber(product.sellingPrice),
+    minSellingPrice: product.minSellingPrice ? toNumber(product.minSellingPrice) : null,
+    taxRate: toNumber(product.taxRate),
+    reorderPoint: toNumber(product.reorderPoint),
+    reorderQuantity: toNumber(product.reorderQuantity),
+    weight: product.weight ? toNumber(product.weight) : null,
+    onHand,
+    stockHealth: classifyStock(onHand, reorderPoint),
+    stockByWarehouse: product.stockBalances.map((b) => ({
+      warehouseId: b.warehouseId,
+      warehouse: b.warehouse,
+      quantityOnHand: toNumber(b.quantityOnHand),
+      quantityReserved: toNumber(b.quantityReserved),
+      quantityOnOrder: toNumber(b.quantityOnOrder),
+    })),
+    variants: product.variants.map((v) => ({
+      ...v,
+      costPrice: v.costPrice ? toNumber(v.costPrice) : null,
+      sellingPrice: v.sellingPrice ? toNumber(v.sellingPrice) : null,
+      onHand: v.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0),
+      stockByWarehouse: v.stockBalances.map((b) => ({
+        warehouseId: b.warehouseId,
+        warehouse: b.warehouse,
+        quantityOnHand: toNumber(b.quantityOnHand),
+      })),
+    })),
+    stockTrend,
+    analytics: {
+      unitsSold30d: totalSold,
+      grossMargin: margin,
+      abcClass,
+      revenueProxy,
+    },
+  }
+}
+
+export async function getProductLedger(
+  tenantId: string,
+  productId: string,
+  opts: { page?: number; limit?: number; transactionType?: StockTransactionType } = {},
+) {
+  const page = opts.page ?? 1
+  const limit = opts.limit ?? 20
+  const where: Prisma.StockLedgerWhereInput = {
+    tenantId,
+    productId,
+    ...(opts.transactionType && { transactionType: opts.transactionType }),
+  }
+
+  const [entries, total] = await Promise.all([
+    prisma.stockLedger.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        warehouse: { select: { name: true, code: true } },
+        performer: { select: { fullName: true } },
+      },
+    }),
+    prisma.stockLedger.count({ where }),
+  ])
+
+  return {
+    entries: entries.map((e) => ({
+      ...e,
+      quantity: toNumber(e.quantity),
+      unitCost: toNumber(e.unitCost),
+      totalCost: toNumber(e.totalCost),
+    })),
+    total,
+    page,
+    limit,
+  }
+}
+
+export async function createCatalogProduct(
+  tenantId: string,
+  data: Record<string, unknown>,
+  actorId?: string,
+) {
+  const sku = buildProductSku(data.sku)
+  const slug = buildProductSlug(String(data.name), data.slug)
+
+  const product = await prisma.product.create({
+    data: {
+      tenantId,
+      sku,
+      slug,
+      name: String(data.name),
+      barcode: (data.barcode as string) ?? null,
+      description: (data.description as string) ?? null,
+      categoryId: (data.categoryId as string) ?? null,
+      supplierId: (data.supplierId as string) ?? null,
+      unit: (data.unit as Prisma.ProductCreateInput['unit']) ?? 'PCS',
+      costPrice: toDecimal(Number(data.costPrice ?? 0)),
+      sellingPrice: toDecimal(Number(data.sellingPrice ?? 0)),
+      minSellingPrice: data.minSellingPrice != null ? toDecimal(Number(data.minSellingPrice)) : null,
+      taxRate: toDecimal(Number(data.taxRate ?? 0)),
+      imageUrls: (data.imageUrls as string[]) ?? [],
+      isActive: data.isActive !== false,
+      isService: Boolean(data.isService),
+      trackInventory: data.trackInventory !== false,
+      reorderPoint: toDecimal(Number(data.reorderPoint ?? 0)),
+      reorderQuantity: toDecimal(Number(data.reorderQuantity ?? 0)),
+      leadTimeDays: Number(data.leadTimeDays ?? 7),
+      weight: data.weight != null ? toDecimal(Number(data.weight)) : null,
+      dimensions: (data.dimensions as Prisma.InputJsonValue) ?? {},
+    },
+  })
+
+  const auditUserId = await resolveAuditUserId(actorId)
+  await prisma.auditLog.create({
+    data: {
+      tenantId,
+      userId: auditUserId,
+      action: 'PRODUCT_CREATED',
+      resourceType: 'product',
+      resourceId: product.id,
+      newValue: { sku, name: product.name },
+    },
+  })
+
+  return product
+}
+
+export async function updateCatalogProduct(
+  tenantId: string,
+  productId: string,
+  data: Record<string, unknown>,
+  actorId?: string,
+) {
+  const product = await prisma.product.updateMany({
+    where: { id: productId, tenantId },
+    data: {
+      ...(data.name !== undefined && { name: String(data.name) }),
+      ...(data.sku !== undefined && normalizeOptionalString(data.sku) && {
+        sku: normalizeOptionalString(data.sku),
+      }),
+      ...(data.barcode !== undefined && { barcode: (data.barcode as string) ?? null }),
+      ...(data.description !== undefined && { description: (data.description as string) ?? null }),
+      ...(data.categoryId !== undefined && { categoryId: (data.categoryId as string) ?? null }),
+      ...(data.supplierId !== undefined && { supplierId: (data.supplierId as string) ?? null }),
+      ...(data.costPrice !== undefined && { costPrice: toDecimal(Number(data.costPrice)) }),
+      ...(data.sellingPrice !== undefined && { sellingPrice: toDecimal(Number(data.sellingPrice)) }),
+      ...(data.reorderPoint !== undefined && { reorderPoint: toDecimal(Number(data.reorderPoint)) }),
+      ...(data.reorderQuantity !== undefined && {
+        reorderQuantity: toDecimal(Number(data.reorderQuantity)),
+      }),
+      ...(data.imageUrls !== undefined && { imageUrls: data.imageUrls as string[] }),
+      ...(data.isActive !== undefined && { isActive: Boolean(data.isActive) }),
+    },
+  })
+
+  const auditUserId = await resolveAuditUserId(actorId)
+  await prisma.auditLog.create({
+    data: {
+      tenantId,
+      userId: auditUserId,
+      action: 'PRODUCT_UPDATED',
+      resourceType: 'product',
+      resourceId: productId,
+      newValue: data as Prisma.InputJsonValue,
+    },
+  })
+
+  if (!product.count) throw new Error('Product not found')
+  return prisma.product.findFirstOrThrow({ where: { id: productId, tenantId } })
+}
+
+export async function importProductsFromCsv(
+  tenantId: string,
+  rows: Array<Record<string, string>>,
+  actorId?: string,
+) {
+  const created: string[] = []
+  for (const row of rows) {
+    if (!row.name?.trim()) continue
+    const product = await createCatalogProduct(
+      tenantId,
+      {
+        name: row.name.trim(),
+        sku: row.sku?.trim(),
+        barcode: row.barcode?.trim(),
+        costPrice: parseFloat(row.costPrice ?? '0'),
+        sellingPrice: parseFloat(row.sellingPrice ?? '0'),
+        reorderPoint: parseFloat(row.reorderPoint ?? '0'),
+        categoryId: row.categoryId?.trim(),
+        supplierId: row.supplierId?.trim(),
+      },
+      actorId,
+    )
+    created.push(product.id)
+  }
+  return { imported: created.length, productIds: created }
+}
+
+export async function deleteCatalogProduct(tenantId: string, productId: string, actorId?: string) {
+  const product = await prisma.product.findFirst({ where: { id: productId, tenantId } })
+  if (!product) throw new Error('Product not found')
+
+  await prisma.product.update({
+    where: { id: productId },
+    data: { isActive: false },
+  })
+
+  await prisma.auditLog.create({
+    data: {
+      tenantId,
+      userId: await resolveAuditUserId(actorId),
+      action: 'PRODUCT_DELETED',
+      resourceType: 'product',
+      resourceId: productId,
+    },
+  })
+
+  return { id: productId, deleted: true }
+}
