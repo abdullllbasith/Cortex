@@ -70,11 +70,69 @@ export function applyTenantBranding(branding: TenantBranding): void {
   root.style.setProperty('--focus-ring-color', mixHex(primary, 0.08, 'white'))
   root.style.setProperty('--color-accent', secondary)
   root.style.setProperty('--selection-bg', mixHex(primary, 0.88, 'white'))
+
+  applyTenantFavicon(branding.logoUrl)
+}
+
+const DEFAULT_FAVICON = '/favicon.svg'
+const FAVICON_LINK_ID = 'saios-dynamic-favicon'
+const APPLE_ICON_LINK_ID = 'saios-dynamic-apple-icon'
+
+function faviconMimeType(href: string): string | undefined {
+  const path = href.split('?')[0].split('#')[0].toLowerCase()
+  if (path.endsWith('.svg')) return 'image/svg+xml'
+  if (path.endsWith('.png')) return 'image/png'
+  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg'
+  if (path.endsWith('.webp')) return 'image/webp'
+  if (path.endsWith('.gif')) return 'image/gif'
+  return undefined
+}
+
+function setFaviconLink(link: HTMLLinkElement, rel: string, href: string, mime?: string): void {
+  link.rel = rel
+  link.href = href
+  if (mime) link.type = mime
+  else link.removeAttribute('type')
+}
+
+/** Use workspace logo as browser tab icon (favicon) when set. */
+export function applyTenantFavicon(logoUrl: string | null | undefined): void {
+  if (typeof document === 'undefined') return
+
+  const href = logoUrl?.trim() ? logoUrl : DEFAULT_FAVICON
+  const mime = faviconMimeType(href)
+
+  const managed: Array<{ id: string; rel: string }> = [
+    { id: FAVICON_LINK_ID, rel: 'icon' },
+    { id: APPLE_ICON_LINK_ID, rel: 'apple-touch-icon' },
+  ]
+
+  for (const { id, rel } of managed) {
+    let link = document.getElementById(id) as HTMLLinkElement | null
+    if (!link) {
+      link = document.createElement('link')
+      link.id = id
+      document.head.appendChild(link)
+    }
+    setFaviconLink(link, rel, href, mime)
+  }
+
+  // Sync Next.js metadata icons in place — never remove nodes React may still reference.
+  document
+    .querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')
+    .forEach((node) => {
+      const link = node as HTMLLinkElement
+      if (link.id === FAVICON_LINK_ID || link.id === APPLE_ICON_LINK_ID) return
+      setFaviconLink(link, link.rel || 'icon', href, mime)
+    })
 }
 
 export const BRANDING_UPDATED_EVENT = 'saios:branding-updated'
 
-export function notifyBrandingUpdated(): void {
+export function notifyBrandingUpdated(patch?: Partial<TenantBranding>): void {
   if (typeof window === 'undefined') return
-  window.dispatchEvent(new Event(BRANDING_UPDATED_EVENT))
+  if (patch?.logoUrl !== undefined) {
+    applyTenantFavicon(patch.logoUrl)
+  }
+  window.dispatchEvent(new CustomEvent(BRANDING_UPDATED_EVENT, { detail: patch }))
 }

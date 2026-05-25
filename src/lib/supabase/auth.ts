@@ -166,14 +166,20 @@ export async function signInWithOAuth(provider: 'google' | 'azure') {
   if (error) throw error
 }
 
+/** @deprecated Use POST /api/auth/forgot-password (sends via Gmail SMTP) */
 export async function sendPasswordResetEmail(email: string) {
-  if (!supabase) return
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
   })
-  if (error) throw error
+  const json = await res.json()
+  if (!res.ok || !json.success) {
+    throw new Error(json.error?.message ?? 'Failed to send reset email')
+  }
 }
 
+/** @deprecated Reset flow uses createSupabaseBrowserClient on /reset-password */
 export async function updatePassword(password: string) {
   if (!supabase) return
   const { error } = await supabase.auth.updateUser({ password })

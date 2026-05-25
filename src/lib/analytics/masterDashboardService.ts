@@ -2,7 +2,7 @@ import { DealStatus, InvoiceStatus } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { PLAN_LIMITS } from '@/lib/settings/billingService'
 import { calculatePipelineValue, getDefaultPipeline, parseStages } from '@/lib/crm/pipelineService'
-import { InventoryAgent } from '@/lib/agents/InventoryAgent'
+import { getLowStockSummaryForDashboard } from '@/lib/inventory/reorderService'
 import { computeSalesMetrics, computeSalesTimeseries, getRecentTransactions } from './aggregationPipeline'
 import { resolveDateRange, fillDailyTimeseriesGaps } from './periodUtils'
 
@@ -32,8 +32,6 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
   const dayStart = new Date()
   dayStart.setHours(0, 0, 0, 0)
 
-  const inventoryAgent = new InventoryAgent(tenantId)
-
   const [
     todaySales,
     activeOrders,
@@ -53,7 +51,7 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
       where: { tenantId, status: { notIn: ['DELIVERED', 'CANCELLED'] } },
     }),
     calculatePipelineValue(tenantId),
-    inventoryAgent.getLowStockItems(),
+    getLowStockSummaryForDashboard(tenantId, 5),
     prisma.invoice.aggregate({
       where: {
         tenantId,
@@ -93,15 +91,32 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
     previousRevenue: null,
   }))
 
+  const last7 = filledRevenue.slice(-7)
+  const arTotal = Math.round(toNumber(arOutstanding._sum.amountDue) * 100) / 100
+  const pipelineSparkline =
+    pipelineStages.length > 0
+      ? pipelineStages.map((s) => s.value)
+      : [Math.round(pipeline.weightedValue * 100) / 100]
+
+  const aiCallsSparkline = await getAgentLogCountsLast7Days(tenantId)
+
   return {
     kpis: {
       revenueToday: Math.round(todaySales.totalRevenue * 100) / 100,
       activeOrders,
       pipelineValue: Math.round(pipeline.weightedValue * 100) / 100,
       lowStockItems: lowStock.count,
-      arOutstanding: Math.round(toNumber(arOutstanding._sum.amountDue) * 100) / 100,
+      arOutstanding: arTotal,
       aiCallsToday,
       aiCallsLimit: aiLimit,
+    },
+    kpiSparklines: {
+      revenueToday: last7.map((r) => r.revenue),
+      activeOrders: last7.map((r) => r.orderCount ?? r.orders ?? 0),
+      pipelineValue: pipelineSparkline,
+      lowStockItems: padSparkline(lowStock.count, 7),
+      arOutstanding: padSparkline(arTotal, 7),
+      aiCallsToday: aiCallsSparkline,
     },
     revenueChart14d: filledRevenue.map((r) => ({
       date: r.date.slice(5, 10),
@@ -120,7 +135,7 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
       contactEmail: inv.contact?.email ?? null,
       canSendReminder: inv.status !== 'VOID' && inv.status !== 'CANCELLED' && !!inv.contact?.email,
     })),
-    reorderAlerts: lowStock.items.slice(0, 5).map((item) => ({
+    reorderAlerts: lowStock.items.map((item) => ({
       productId: item.productId,
       name: item.productName,
       sku: item.sku,
@@ -131,6 +146,28 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
     overdueFollowUps,
     recentTransactions,
   }
+}
+
+function padSparkline(value: number, length: number): number[] {
+  return Array.from({ length }, () => value)
+}
+
+async function getAgentLogCountsLast7Days(tenantId: string): Promise<number[]> {
+  const start = new Date()
+  start.setDate(start.getDate() - 6)
+  start.setHours(0, 0, 0, 0)
+
+  const logs = await prisma.agentLog.findMany({
+    where: { tenantId, createdAt: { gte: start } },
+    select: { createdAt: true },
+  })
+
+  const buckets = Array.from({ length: 7 }, () => 0)
+  for (const log of logs) {
+    const dayIndex = Math.floor((log.createdAt.getTime() - start.getTime()) / 86_400_000)
+    if (dayIndex >= 0 && dayIndex < 7) buckets[dayIndex] += 1
+  }
+  return buckets
 }
 
 async function getPipelineByStage(tenantId: string) {

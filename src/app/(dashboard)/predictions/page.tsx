@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import PredictionsPageClient from './PredictionsPageClient'
+import PredictionsPageClient from '@/app/(dashboard)/predictions/PredictionsPageClient'
 
 export const metadata: Metadata = { title: 'Predictions' }
 

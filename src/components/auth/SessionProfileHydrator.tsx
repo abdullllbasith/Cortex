@@ -4,28 +4,45 @@ import { useEffect } from 'react'
 import { apiClient } from '@/lib/api/apiClient'
 import { useSessionStore } from '@/store/sessionStore'
 import type { UserProfileDTO } from '@/lib/settings/types'
+import type { TenantBranding } from '@/lib/branding/tenantBranding'
 
-/** Restore avatar/name from the server after reload so shell UI stays in sync. */
+/** Restore avatar and workspace branding from the server after login or reload. */
 export function SessionProfileHydrator() {
   const accessToken = useSessionStore((s) => s.accessToken)
   const tenantId = useSessionStore((s) => s.tenant?.id)
+  const devSessionSynced = useSessionStore((s) => s.devSessionSynced)
   const updateUser = useSessionStore((s) => s.updateUser)
+  const updateTenant = useSessionStore((s) => s.updateTenant)
 
   useEffect(() => {
-    if (!accessToken || !tenantId) return
+    if (!accessToken || !tenantId || !devSessionSynced) return
 
-    apiClient
-      .get<UserProfileDTO>('/settings/profile')
-      .then((profile) => {
+    let cancelled = false
+
+    void Promise.allSettled([
+      apiClient.get<UserProfileDTO>('/settings/profile'),
+      apiClient.get<TenantBranding & { name?: string | null }>('/settings/branding'),
+    ]).then(([profileResult, brandingResult]) => {
+      if (cancelled) return
+      if (profileResult.status === 'fulfilled') {
         updateUser({
-          name: profile.fullName,
-          avatarUrl: profile.avatarUrl ?? undefined,
+          name: profileResult.value.fullName,
+          avatarUrl: profileResult.value.avatarUrl ?? undefined,
         })
-      })
-      .catch(() => {
-        /* profile fetch optional during bootstrap */
-      })
-  }, [accessToken, tenantId, updateUser])
+      }
+      if (brandingResult.status === 'fulfilled') {
+        updateTenant({
+          logoUrl: brandingResult.value.logoUrl ?? undefined,
+          primaryColor: brandingResult.value.primaryColor ?? undefined,
+          secondaryColor: brandingResult.value.secondaryColor ?? undefined,
+        })
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, tenantId, devSessionSynced, updateUser, updateTenant])
 
   return null
 }

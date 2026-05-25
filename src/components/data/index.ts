@@ -4,6 +4,7 @@ export type { ColumnDef, DataTableProps, SortDirection } from './DataTable'
 export {
   LazyDataTable,
   LazyRevenueChart,
+  LazyMasterDashboardCharts,
   LazyWorkflowBuilder,
   LazyFormRichText,
   LazyChartPanel,

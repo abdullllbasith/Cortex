@@ -3,6 +3,6 @@ import { InventoryDashboardClient } from '@/components/inventory/InventoryDashbo
 
 export const metadata: Metadata = { title: 'Inventory' }
 
-export default function InventoryDashboardPage() {
+export default function InventoryPage() {
   return <InventoryDashboardClient />
 }

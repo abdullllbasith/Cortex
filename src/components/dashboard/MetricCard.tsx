@@ -1,21 +1,17 @@
 'use client'
 
 import { type CSSProperties } from 'react'
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { Card } from '@/components/ui'
 import { Skeleton } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { LazyMetricSparkline } from '@/lib/lazy/components'
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
 export interface MetricCardProps {
   label: string
-  value: number | string
+  value?: number | string
   /** Percentage change vs previous period */
   change?: number
   /** Whether a positive change is good (default true) */
@@ -39,44 +35,20 @@ export interface MetricCardProps {
 
 /* ── Formatting ─────────────────────────────────────────────────────────── */
 
-function formatValue(value: number | string, prefix?: string, suffix?: string): string {
+function formatValue(value: number | string | null | undefined, prefix?: string, suffix?: string): string {
+  if (value == null || value === '') {
+    return `${prefix ?? ''}0${suffix ?? ''}`
+  }
   if (typeof value === 'string') return value
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return `${prefix ?? ''}0${suffix ?? ''}`
+  }
   const n = value >= 1_000_000
     ? `${(value / 1_000_000).toFixed(1)}M`
     : value >= 1_000
       ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k`
       : value.toLocaleString()
   return `${prefix ?? ''}${n}${suffix ?? ''}`
-}
-
-/* ── Sparkline ───────────────────────────────────────────────────────────── */
-
-function Sparkline({
-  data,
-  positive,
-}: {
-  data: number[]
-  positive: boolean
-}) {
-  const chartData = data.map((value, index) => ({ value, index }))
-  const color = positive ? '#22c55e' : '#ef4444'
-
-  return (
-    <div className="h-10 w-full min-w-0">
-      <ResponsiveContainer width="100%" height={40} minWidth={0}>
-      <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-        <Line
-          type="monotone"
-          dataKey="value"
-          stroke={color}
-          strokeWidth={1.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-    </div>
-  )
 }
 
 /* ── MetricCard ──────────────────────────────────────────────────────────── */
@@ -118,16 +90,20 @@ export function MetricCard({
   const changeColor = isGoodChange ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
   const TrendIcon = isPositiveChange ? TrendingUp : TrendingDown
 
-  const displayValue =
-    numerator !== undefined && denominator !== undefined
-      ? `${numerator.toLocaleString()} / ${denominator.toLocaleString()}`
-      : formatValue(value, prefix, suffix)
+  const isRatio = numerator !== undefined || denominator !== undefined
+  const safeNumerator = numerator ?? 0
+  const safeDenominator = denominator ?? 0
+  const safeValue = value ?? 0
+
+  const displayValue = isRatio
+    ? `${safeNumerator.toLocaleString()} / ${safeDenominator.toLocaleString()}`
+    : formatValue(safeValue, prefix, suffix)
 
   return (
     <Card
       className={cn(
         'p-4 animate-fadeIn transition-shadow hover:shadow-md',
-        urgent && Number(value) > 0 && 'border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/10',
+        urgent && Number(safeValue) > 0 && 'border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/10',
         className,
       )}
       style={cardStyle}
@@ -139,7 +115,7 @@ export function MetricCard({
       <p
         className={cn(
           'mt-1 font-display text-2xl font-bold tabular-nums leading-none',
-            urgent && Number(value) > 0
+            urgent && Number(safeValue) > 0
             ? 'text-red-600 dark:text-red-400'
             : 'text-slate-900 dark:text-slate-100',
         )}
@@ -148,19 +124,21 @@ export function MetricCard({
       </p>
 
       {/* Progress bar for ratio metrics */}
-      {numerator !== undefined && denominator !== undefined && (
+      {isRatio && (
         <div className="mt-2 h-1 w-full rounded-full bg-slate-100 dark:bg-slate-800">
           <div
             className="h-full rounded-full bg-indigo-500 transition-all"
-            style={{ width: `${Math.min(100, (numerator / denominator) * 100).toFixed(1)}%` }}
+            style={{
+              width: `${safeDenominator > 0 ? Math.min(100, (safeNumerator / safeDenominator) * 100) : 0}%`,
+            }}
           />
         </div>
       )}
 
       {/* Sparkline */}
       {sparkline && sparkline.length > 0 && (
-        <div className="mt-2 -mx-1">
-          <Sparkline data={sparkline} positive={isGoodChange} />
+        <div className="mt-2 h-10 w-full min-w-0">
+          <LazyMetricSparkline data={sparkline} positive={isGoodChange} />
         </div>
       )}
 
@@ -173,9 +151,11 @@ export function MetricCard({
       )}
 
       {/* Ratio label */}
-      {numerator !== undefined && denominator !== undefined && (
+      {isRatio && (
         <p className="mt-1 text-xs text-slate-400">
-          {((numerator / denominator) * 100).toFixed(0)}% of plan used
+          {safeDenominator > 0
+            ? `${((safeNumerator / safeDenominator) * 100).toFixed(0)}% of plan used`
+            : '0% of plan used'}
         </p>
       )}
     </Card>

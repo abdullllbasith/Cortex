@@ -42,7 +42,7 @@ export function Sidebar({ className }: { className?: string }) {
     >
       <SidebarLogo collapsed={effectiveCollapsed} />
 
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-area">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-area scroll-area-dark">
         {navSections.map((section) => (
           <SidebarSection key={section.label} section={section} collapsed={effectiveCollapsed} reorderCount={reorderCount} />
         ))}
@@ -163,8 +163,18 @@ function SidebarNavItem({
   collapsed: boolean
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const active = isNavItemActive(item.href, pathname)
   const { icon: Icon, label, badge, badgeVariant, placeholder } = item
+
+  const prefetchRoute = () => {
+    if (placeholder) return
+    try {
+      router.prefetch(item.href)
+    } catch {
+      /* prefetch optional */
+    }
+  }
 
   const itemContent = (
     <span
@@ -225,7 +235,14 @@ function SidebarNavItem({
     return (
       <li>
         <Tooltip content={label} side="right" delayDuration={200}>
-          <Link href={item.href} aria-label={label} aria-current={active ? 'page' : undefined}>
+          <Link
+            href={item.href}
+            aria-label={label}
+            aria-current={active ? 'page' : undefined}
+            prefetch
+            onMouseEnter={prefetchRoute}
+            onFocus={prefetchRoute}
+          >
             {itemContent}
           </Link>
         </Tooltip>
@@ -235,7 +252,13 @@ function SidebarNavItem({
 
   return (
     <li>
-      <Link href={item.href} aria-current={active ? 'page' : undefined}>
+      <Link
+        href={item.href}
+        aria-current={active ? 'page' : undefined}
+        prefetch
+        onMouseEnter={prefetchRoute}
+        onFocus={prefetchRoute}
+      >
         {itemContent}
       </Link>
     </li>

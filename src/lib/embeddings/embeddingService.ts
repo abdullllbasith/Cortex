@@ -7,6 +7,33 @@ import {
 
 let openaiClient: OpenAI | null = null
 
+const EMBEDDING_CACHE_TTL_MS = 5 * 60 * 1000
+const EMBEDDING_CACHE_MAX = 200
+const embeddingCache = new Map<string, { vector: number[]; at: number }>()
+
+function cacheKey(text: string): string {
+  return text.trim().toLowerCase()
+}
+
+function readEmbeddingCache(text: string): number[] | null {
+  const key = cacheKey(text)
+  const hit = embeddingCache.get(key)
+  if (!hit) return null
+  if (Date.now() - hit.at > EMBEDDING_CACHE_TTL_MS) {
+    embeddingCache.delete(key)
+    return null
+  }
+  return hit.vector
+}
+
+function writeEmbeddingCache(text: string, vector: number[]) {
+  if (embeddingCache.size >= EMBEDDING_CACHE_MAX) {
+    const oldest = embeddingCache.keys().next().value
+    if (oldest) embeddingCache.delete(oldest)
+  }
+  embeddingCache.set(cacheKey(text), { vector, at: Date.now() })
+}
+
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
     const apiKey = process.env.OPENAI_API_KEY
@@ -42,8 +69,13 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     throw new EmbeddingError('Cannot embed empty text', 'EMPTY_INPUT')
   }
 
+  const cached = readEmbeddingCache(input)
+  if (cached) return cached
+
   if (process.env.AUTH_DEV_MODE === 'true' && !process.env.OPENAI_API_KEY) {
-    return mockEmbedding(input)
+    const vector = mockEmbedding(input)
+    writeEmbeddingCache(input, vector)
+    return vector
   }
 
   const client = getOpenAIClient()
@@ -63,6 +95,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
         throw new EmbeddingError('Invalid embedding response from OpenAI', 'INVALID_RESPONSE')
       }
 
+      writeEmbeddingCache(input, embedding)
       return embedding
     } catch (err: unknown) {
       attempt++

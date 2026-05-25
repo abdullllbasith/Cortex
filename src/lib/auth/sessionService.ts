@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db/prisma'
 import { signAccessToken, refreshTokenExpiresAt } from '@/lib/auth/jwt'
 import { generateSecureToken, hashToken } from '@/lib/security/encryption'
 import { getEffectivePermissions } from '@/lib/auth/rbac'
+import { loadSessionPresentation } from '@/lib/auth/sessionAssets'
+import { resolveCanonicalUserForAuth } from '@/lib/auth/resolveCanonicalUser'
 import type { UserRole } from '@prisma/client'
 import type { Permission } from '@/lib/auth/permissions'
 
@@ -17,12 +19,16 @@ export interface SessionIssueResult {
     role: UserRole
     tenantId: string
     mfaEnabled: boolean
+    avatarUrl: string | null
   }
   tenant: {
     id: string
     name: string
     slug: string
     plan: string
+    logoUrl: string | null
+    primaryColor: string | null
+    secondaryColor: string | null
   }
 }
 
@@ -59,6 +65,8 @@ export async function issueSession(
     sessionId: session.id,
   })
 
+  const presentation = await loadSessionPresentation(user.id, user.tenantId)
+
   return {
     accessToken,
     refreshToken,
@@ -71,12 +79,16 @@ export async function issueSession(
       role: user.role,
       tenantId: user.tenantId,
       mfaEnabled: user.mfaEnabled,
+      avatarUrl: presentation.avatarUrl,
     },
     tenant: {
       id: user.tenant.id,
       name: user.tenant.name,
       slug: user.tenant.slug,
       plan: user.tenant.plan.toLowerCase(),
+      logoUrl: presentation.branding.logoUrl,
+      primaryColor: presentation.branding.primaryColor,
+      secondaryColor: presentation.branding.secondaryColor,
     },
   }
 }
@@ -100,6 +112,11 @@ export async function findUserBySupabaseId(supabaseId: string) {
     where: { supabaseId },
     include: { tenant: true },
   })
+}
+
+/** Resolve Supabase login to an app user; link supabaseId when matched by email. */
+export async function findOrLinkUserBySupabase(supabaseId: string, email: string) {
+  return resolveCanonicalUserForAuth(supabaseId, email)
 }
 
 export async function findUserByEmail(tenantId: string, email: string) {

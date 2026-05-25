@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { supabaseOptionsForRuntime } from '@/lib/supabase/nodeTransport'
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies()
@@ -37,6 +38,7 @@ export function createSupabaseAdminClient() {
   if (!url || !serviceKey) return null
 
   return createClient(url, serviceKey, {
+    ...supabaseOptionsForRuntime(),
     auth: { autoRefreshToken: false, persistSession: false },
   })
 }

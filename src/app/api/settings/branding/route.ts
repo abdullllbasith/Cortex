@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { withTenantAuth, handleRouteError } from '@/lib/knowledge/apiHandler'
 import { apiSuccess } from '@/lib/knowledge/response'
+import { privateCacheHeaders } from '@/lib/http/cacheHeaders'
 import { getTenantGeneral } from '@/lib/settings/tenantSettingsService'
 
 function appUrl(request: Request): string {
@@ -17,6 +18,7 @@ export const GET = withTenantAuth(async (request, { auth }) => {
         primaryColor: data.settings.primaryColor ?? null,
         secondaryColor: data.settings.secondaryColor ?? null,
       }),
+      { headers: privateCacheHeaders(120, 600) },
     )
   } catch (err) {
     return handleRouteError(err)

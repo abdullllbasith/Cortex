@@ -3,6 +3,8 @@
 import useSWR from 'swr'
 import { swrFetcher, apiClient } from '@/lib/api/apiClient'
 import { queryKeys } from '@/lib/api/queryKeys'
+import { swrRefreshIntervalMs } from '@/lib/performance/runtimeFlags'
+import { usePageVisible } from '@/hooks/usePageVisible'
 
 export interface WorkflowDetail {
   id: string
@@ -53,10 +55,11 @@ export function useWorkflow(id?: string) {
 }
 
 export function useWorkflowExecutions(id?: string) {
+  const visible = usePageVisible()
   return useSWR<WorkflowExecutionItem[]>(
-    id ? queryKeys.workflows.executions(id) : null,
+    visible && id ? queryKeys.workflows.executions(id) : null,
     () => swrFetcher(`/workflows/${id}/executions`),
-    { refreshInterval: 5000 },
+    { refreshInterval: swrRefreshIntervalMs(15_000) },
   )
 }
 

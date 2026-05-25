@@ -41,6 +41,8 @@ export function MfaVerifyClient() {
           permissions: json.data.permissions,
           accessToken: json.data.accessToken,
         })
+        const { hydrateSessionFromServer } = await import('@/lib/auth/sessionClient')
+        await hydrateSessionFromServer()
       } else {
         setTokens(json.data.accessToken)
       }

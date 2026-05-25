@@ -1,22 +1,11 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  DollarSign,
   ShoppingCart,
-  TrendingUp,
   Package,
   FileText,
   Bot,
@@ -27,9 +16,21 @@ import {
 } from 'lucide-react'
 import { Button, Card, CardBody, Skeleton, toast } from '@/components/ui'
 import { MetricCard } from './MetricCard'
+import { LazyMasterDashboardCharts } from '@/lib/lazy/components'
 import { swrFetcher, apiClient } from '@/lib/api/apiClient'
 import { ResponsiveContainer as PageContainer } from '@/components/layout/ResponsiveContainer'
 import { useSessionStore } from '@/store/sessionStore'
+import { useSessionReady } from '@/hooks/useSessionReady'
+import { shouldReduceBackgroundWork } from '@/lib/performance/runtimeFlags'
+
+interface DashboardKpiSparklines {
+  revenueToday: number[]
+  activeOrders: number[]
+  pipelineValue: number[]
+  lowStockItems: number[]
+  arOutstanding: number[]
+  aiCallsToday: number[]
+}
 
 interface DashboardData {
   kpis: {
@@ -41,6 +42,7 @@ interface DashboardData {
     aiCallsToday: number
     aiCallsLimit: number
   }
+  kpiSparklines?: DashboardKpiSparklines
   revenueChart14d: Array<{ date: string; revenue: number }>
   pipelineByStage: Array<{ stageId: string; name: string; count: number; value: number }>
   overdueInvoices: Array<{
@@ -86,26 +88,41 @@ function formatCurrency(n: number) {
 
 export function MasterDashboardClient() {
   const router = useRouter()
-  const user = useSessionStore((s) => s.user)
-  const { data, error, isLoading, mutate } = useSWR<DashboardData>('/analytics/dashboard', swrFetcher, {
-    refreshInterval: 60_000,
-  })
+  const sessionReady = useSessionReady()
+  const tenantId = useSessionStore((s) => s.tenant?.id)
+  const accessToken = useSessionStore((s) => s.accessToken)
+  const devSessionSynced = useSessionStore((s) => s.devSessionSynced)
+  const canFetchDashboard =
+    sessionReady && devSessionSynced && (!accessToken || Boolean(tenantId))
+  const dashboardKey = canFetchDashboard
+    ? (['/analytics/dashboard', tenantId, accessToken] as const)
+    : null
+  const { data, error, isLoading, mutate } = useSWR<DashboardData>(
+    dashboardKey,
+    ([path]) => swrFetcher<DashboardData>(path),
+    {
+      refreshInterval: shouldReduceBackgroundWork() ? 0 : 120_000,
+      dedupingInterval: process.env.NODE_ENV === 'development' ? 5_000 : 60_000,
+    },
+  )
 
+  const shouldLoadBriefing = canFetchDashboard && Boolean(data) && !isLoading
+  const briefingKey = shouldLoadBriefing
+    ? (['/analytics/briefing?quick=1', tenantId] as const)
+    : null
   const {
     data: briefing,
+    error: briefingError,
     isLoading: briefingLoading,
+    isValidating: briefingValidating,
     mutate: refreshBriefing,
-  } = useSWR<BriefingData>('/analytics/briefing', swrFetcher, { revalidateOnFocus: false })
+  } = useSWR<BriefingData>(briefingKey, swrFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 120_000,
+  })
 
-  const [refreshingBriefing, setRefreshingBriefing] = useState(false)
-
-  const refreshDailyBriefing = useCallback(async () => {
-    setRefreshingBriefing(true)
-    try {
-      await refreshBriefing()
-    } finally {
-      setRefreshingBriefing(false)
-    }
+  const refreshDailyBriefing = useCallback(() => {
+    void refreshBriefing()
   }, [refreshBriefing])
 
   async function sendInvoiceReminder(invoiceId: string) {
@@ -118,13 +135,7 @@ export function MasterDashboardClient() {
     }
   }
 
-  const greeting = user?.fullName?.split(' ')[0] ?? 'there'
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  const spark = data?.kpiSparklines
 
   if (error && !data) {
     return (
@@ -138,14 +149,7 @@ export function MasterDashboardClient() {
 
   return (
     <PageContainer className="flex flex-col gap-5 py-5 lg:py-6">
-      {/* Row 1 — Welcome */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            Good {new Date().getHours() < 12 ? 'morning' : 'afternoon'}, {greeting}
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">{today}</p>
-        </div>
+      <div className="flex justify-end">
         <Button
           size="sm"
           variant="primary"
@@ -156,18 +160,20 @@ export function MasterDashboardClient() {
         </Button>
       </div>
 
-      {/* Row 2 — KPIs */}
+      {/* KPIs */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
           label="Revenue today"
           value={data?.kpis.revenueToday ?? 0}
           prefix="$"
+          sparkline={spark?.revenueToday}
           loading={isLoading}
           animationDelay={0}
         />
         <MetricCard
           label="Active orders"
           value={data?.kpis.activeOrders ?? 0}
+          sparkline={spark?.activeOrders}
           loading={isLoading}
           animationDelay={50}
         />
@@ -175,6 +181,7 @@ export function MasterDashboardClient() {
           label="Pipeline value"
           value={data?.kpis.pipelineValue ?? 0}
           prefix="$"
+          sparkline={spark?.pipelineValue}
           loading={isLoading}
           animationDelay={100}
         />
@@ -183,6 +190,7 @@ export function MasterDashboardClient() {
           value={data?.kpis.lowStockItems ?? 0}
           urgent={(data?.kpis.lowStockItems ?? 0) > 0}
           positiveIsGood={false}
+          sparkline={spark?.lowStockItems}
           loading={isLoading}
           animationDelay={150}
         />
@@ -190,6 +198,7 @@ export function MasterDashboardClient() {
           label="AR outstanding"
           value={data?.kpis.arOutstanding ?? 0}
           prefix="$"
+          sparkline={spark?.arOutstanding}
           loading={isLoading}
           animationDelay={200}
         />
@@ -197,24 +206,32 @@ export function MasterDashboardClient() {
           label="AI calls today"
           numerator={data?.kpis.aiCallsToday}
           denominator={data?.kpis.aiCallsLimit}
+          sparkline={spark?.aiCallsToday}
           loading={isLoading}
           animationDelay={250}
         />
       </div>
 
-      {/* Row 3 — Daily briefing */}
-      <Card>
+      {/* AI daily briefing — auto-loads after dashboard KPIs are ready */}
+      <Card className="overflow-hidden border-indigo-200/90 bg-gradient-to-br from-indigo-50 via-violet-50/80 to-white shadow-sm dark:border-indigo-800/60 dark:from-indigo-950/50 dark:via-violet-950/30 dark:to-slate-900">
         <CardBody className="p-5">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-indigo-600" />
-              <h2 className="font-semibold">AI daily briefing</h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm dark:bg-indigo-500">
+                <Bot className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="font-semibold text-indigo-950 dark:text-indigo-100">AI daily briefing</h2>
+                <p className="text-xs text-indigo-600/80 dark:text-indigo-300/80">SAIOS executive insight for today</p>
+              </div>
             </div>
             <Button
               size="sm"
               variant="ghost"
-              loading={refreshingBriefing || briefingLoading}
-              onClick={() => void refreshDailyBriefing()}
+              className="text-indigo-700 hover:bg-indigo-100/80 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+              loading={briefingLoading || briefingValidating}
+              onClick={refreshDailyBriefing}
+              aria-label="Refresh AI briefing"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -227,7 +244,7 @@ export function MasterDashboardClient() {
             </div>
           ) : briefing ? (
             <div className="space-y-4">
-              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-200">
                 {briefing.executiveSummary}
               </p>
               {briefing.priorityActions.length > 0 && (
@@ -236,9 +253,9 @@ export function MasterDashboardClient() {
                     <li key={i}>
                       <Link
                         href={action.href}
-                        className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-indigo-700 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
                       >
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs text-indigo-700">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-200/80 text-xs text-indigo-900 dark:bg-indigo-900/60 dark:text-indigo-100">
                           {i + 1}
                         </span>
                         {action.label}
@@ -248,61 +265,41 @@ export function MasterDashboardClient() {
                   ))}
                 </ul>
               )}
+              {briefing.risks.length > 0 && (
+                <ul className="space-y-1 border-t border-indigo-200/60 pt-3 dark:border-indigo-800/50">
+                  {briefing.risks.map((risk, i) => (
+                    <li key={i} className="text-xs text-amber-800 dark:text-amber-200/90">
+                      • {risk}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+          ) : briefingError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              Could not load today&apos;s briefing.{' '}
+              <button
+                type="button"
+                className="font-medium underline underline-offset-2"
+                onClick={refreshDailyBriefing}
+              >
+                Try again
+              </button>
+            </p>
           ) : (
-            <p className="text-sm text-slate-500">Briefing unavailable — check AI configuration.</p>
+            <p className="text-sm text-indigo-700/70 dark:text-indigo-300/70">
+              Preparing today&apos;s briefing…
+            </p>
           )}
         </CardBody>
       </Card>
 
-      {/* Row 4 — Charts */}
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card>
-          <CardBody className="p-5">
-            <h3 className="mb-4 flex items-center gap-2 font-semibold">
-              <DollarSign className="h-4 w-4 text-emerald-600" />
-              Revenue — last 14 days
-            </h3>
-            {isLoading ? (
-              <Skeleton className="h-[220px]" />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={data?.revenueChart14d ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tickFormatter={(v) => `$${v}`} tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(v) => [formatCurrency(Number(v ?? 0)), 'Revenue']} />
-                  <Bar dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardBody className="p-5">
-            <h3 className="mb-4 flex items-center gap-2 font-semibold">
-              <TrendingUp className="h-4 w-4 text-indigo-600" />
-              Pipeline by stage
-            </h3>
-            {isLoading ? (
-              <Skeleton className="h-[220px]" />
-            ) : (data?.pipelineByStage.length ?? 0) === 0 ? (
-              <p className="text-sm text-slate-500 py-8 text-center">No open deals in pipeline</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={data?.pipelineByStage ?? []} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(v) => `$${v}`} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [formatCurrency(Number(v ?? 0)), 'Value']} />
-                  <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardBody>
-        </Card>
-      </div>
+      {/* Row 4 — Charts (lazy-loaded Recharts bundle) */}
+      <LazyMasterDashboardCharts
+        isLoading={isLoading}
+        revenueChart14d={data?.revenueChart14d ?? []}
+        pipelineByStage={data?.pipelineByStage ?? []}
+      />
 
       {/* Row 5 — Action columns */}
       <div className="grid gap-5 lg:grid-cols-3">

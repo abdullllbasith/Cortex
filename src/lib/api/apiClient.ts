@@ -219,6 +219,12 @@ async function request<T>(
     headers,
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     signal,
+    cache:
+      process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_AUTH_DEV_MODE === 'true'
+        ? 'no-store'
+        : method === 'GET'
+          ? 'default'
+          : 'no-store',
   })
 
   /* 401 — refresh token → retry once → redirect */

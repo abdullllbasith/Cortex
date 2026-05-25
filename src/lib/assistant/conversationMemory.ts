@@ -148,34 +148,39 @@ export async function getContextWindow(
 ): Promise<{ recentTurns: ConversationTurn[]; summary?: string }> {
   const session = await prisma.conversationSession.findFirst({
     where: { id: sessionId, tenantId },
+    select: { summary: true },
   })
   if (!session) return { recentTurns: [] }
 
-  const allMessages = await prisma.conversationMessage.findMany({
-    where: { sessionId, tenantId },
-    orderBy: { createdAt: 'asc' },
-  })
+  const [recentRows, total] = await Promise.all([
+    prisma.conversationMessage.findMany({
+      where: { sessionId, tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: SLIDING_WINDOW_SIZE,
+      select: { role: true, content: true },
+    }),
+    prisma.conversationMessage.count({ where: { sessionId, tenantId } }),
+  ])
 
-  if (allMessages.length <= SLIDING_WINDOW_SIZE) {
-    return {
-      recentTurns: allMessages.map((m) => ({
-        role: m.role.toLowerCase() as ConversationTurn['role'],
-        content: m.content,
-      })),
-      summary: session.summary ?? undefined,
-    }
+  const recentTurns = recentRows.reverse().map((m) => ({
+    role: m.role.toLowerCase() as ConversationTurn['role'],
+    content: m.content,
+  }))
+
+  if (total <= SLIDING_WINDOW_SIZE) {
+    return { recentTurns, summary: session.summary ?? undefined }
   }
 
-  const older = allMessages.slice(0, -SLIDING_WINDOW_SIZE)
-  const recent = allMessages.slice(-SLIDING_WINDOW_SIZE)
-
   let summary = session.summary
-  if (!summary || older.length > SLIDING_WINDOW_SIZE) {
-    const olderText = older
-      .map((m) => `${m.role}: ${m.content}`)
-      .join('\n')
+  if (!summary) {
+    const older = await prisma.conversationMessage.findMany({
+      where: { sessionId, tenantId },
+      orderBy: { createdAt: 'asc' },
+      take: total - SLIDING_WINDOW_SIZE,
+      select: { role: true, content: true },
+    })
+    const olderText = older.map((m) => `${m.role}: ${m.content}`).join('\n')
 
-    // Refresh summary in the background — never block an active chat turn on LLM summarization.
     void summarizeWithClaude(olderText)
       .then((newSummary) =>
         prisma.conversationSession.update({
@@ -185,16 +190,10 @@ export async function getContextWindow(
       )
       .catch(() => {})
 
-    summary = summary ?? olderText.slice(0, 4000)
+    summary = olderText.slice(0, 4000)
   }
 
-  return {
-    recentTurns: recent.map((m) => ({
-      role: m.role.toLowerCase() as ConversationTurn['role'],
-      content: m.content,
-    })),
-    summary,
-  }
+  return { recentTurns, summary }
 }
 
 export async function updateSessionTitle(sessionId: string, title: string) {

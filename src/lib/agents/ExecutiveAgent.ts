@@ -75,7 +75,7 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
     return super.heuristicThink(input, iteration)
   }
 
-  async getBusinessHealthSummary() {
+  async getBusinessHealthSummary(options?: { skipLlm?: boolean }) {
     this.involvedAgents.push('finance', 'inventory', 'sales')
 
     const tenant = await prisma.tenant.findUnique({
@@ -114,7 +114,7 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
     let executiveSummary = ''
     let priorityActions: string[] = []
 
-    if (isAssistantLlmAvailable()) {
+    if (isAssistantLlmAvailable() && !options?.skipLlm) {
       const answer = await completeWithClaude({
         systemPrompt: `You are the executive AI for ${companyName}. Be concise, numeric, and action-oriented.`,
         messages: [
@@ -212,8 +212,8 @@ Provide a 3-sentence executive summary and list exactly 3 priority actions as a 
     return actions.slice(0, 3)
   }
 
-  async getDailyBriefing() {
-    const health = await this.getBusinessHealthSummary()
+  async getDailyBriefing(options?: { skipLlm?: boolean }) {
+    const health = await this.getBusinessHealthSummary(options)
     this.involvedAgents.push('sales', 'operations', 'finance')
 
     const sales = new SalesAgent(this.tenantId, undefined, this.taskIdRef)

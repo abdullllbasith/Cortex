@@ -76,8 +76,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         onNewSession={clearChat}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden min-w-0">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto scroll-area">
           {isLoadingHistory ? (
             <MessageSkeleton />
           ) : showSuggestions ? (
@@ -113,10 +113,12 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
           )}
         </div>
 
-        <ChatInput
-          onSend={sendMessage}
-          disabled={isStreaming}
-        />
+        <div className="shrink-0">
+          <ChatInput
+            onSend={sendMessage}
+            disabled={isStreaming}
+          />
+        </div>
       </div>
     </div>
   )

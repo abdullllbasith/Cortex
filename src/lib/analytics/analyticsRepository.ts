@@ -433,8 +433,4 @@ class AnalyticsRepository {
 
 export const analyticsRepository = new AnalyticsRepository()
 
-export function analyticsCacheHeaders(maxAge = 60, swr = 300): HeadersInit {
-  return {
-    'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=${swr}`,
-  }
-}
+export { analyticsCacheHeaders, publicCacheHeaders, privateCacheHeaders } from '@/lib/http/cacheHeaders'

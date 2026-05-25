@@ -12,8 +12,9 @@ import type {
   FinanceAnalyticsData,
   HrAnalyticsData,
 } from '@/lib/analytics/types'
+import { analyticsPollIntervalMs } from '@/lib/performance/runtimeFlags'
 
-const REFRESH_MS = 60_000
+const REFRESH_MS = analyticsPollIntervalMs()
 
 interface ApiEnvelope<T> {
   success: boolean

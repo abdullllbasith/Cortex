@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db/prisma'
+import { resolveDevBootstrapContext } from '@/lib/auth/resolveDevTenant'
 import { apiSuccess, apiError } from '@/lib/knowledge/response'
 
 export async function GET(request: NextRequest) {
@@ -8,39 +8,17 @@ export async function GET(request: NextRequest) {
   }
 
   const tenantId = request.nextUrl.searchParams.get('tenantId')
-  const tenant = tenantId
-    ? await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { id: true, name: true, slug: true, plan: true },
-      })
-    : await prisma.tenant.findFirst({
-        where: { slug: 'acme-corp' },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true, name: true, slug: true, plan: true },
-      })
+  const email = request.nextUrl.searchParams.get('email')
+  const bootstrap = await resolveDevBootstrapContext({ tenantId, email })
 
-  if (!tenant) {
+  if (!bootstrap) {
     return apiError('No seed tenant found. Run npm run db:seed', 'NO_TENANT', 404)
   }
 
-  const owner = await prisma.user.findFirst({
-    where: { tenantId: tenant.id, role: 'OWNER', isActive: true },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, email: true, fullName: true, role: true },
-  })
-
   return NextResponse.json(
     apiSuccess({
-      ...tenant,
-      plan: tenant.plan.toLowerCase(),
-      user: owner
-        ? {
-            id: owner.id,
-            email: owner.email,
-            name: owner.fullName,
-            role: owner.role.toLowerCase(),
-          }
-        : null,
+      ...bootstrap.tenant,
+      user: bootstrap.user,
     }),
   )
 }

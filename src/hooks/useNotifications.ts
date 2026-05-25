@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { swrFetcher } from '@/lib/api/apiClient'
 import { queryKeys } from '@/lib/api/queryKeys'
 import { useNotificationStore } from '@/store/notificationStore'
 import type { NotificationDTO, SseEvent } from '@/lib/notifications/types'
+import { enableNotificationStream } from '@/lib/performance/runtimeFlags'
+import { usePageVisible } from '@/hooks/usePageVisible'
 
 export interface NotificationListResponse {
   notifications: NotificationDTO[]
@@ -72,11 +74,14 @@ async function registerPush() {
 
 /** Single SSE + push registration — mount once in NotificationProvider */
 export function useNotificationStream() {
+  const visible = usePageVisible()
   const prependNotification = useNotificationStore((s) => s.prependNotification)
   const markAllReadLocal = useNotificationStore((s) => s.markAllRead)
   const setLatestCritical = useNotificationStore((s) => s.setLatestCritical)
 
   useEffect(() => {
+    if (!enableNotificationStream() || !visible) return
+
     const es = new EventSource('/api/notifications/stream', { withCredentials: true })
 
     es.onmessage = (event) => {
@@ -98,14 +103,19 @@ export function useNotificationStream() {
     }
 
     return () => es.close()
-  }, [prependNotification, markAllReadLocal, setLatestCritical])
+  }, [visible, prependNotification, markAllReadLocal, setLatestCritical])
 
   useEffect(() => {
+    if (!enableNotificationStream()) return
     void registerPush()
   }, [])
 }
 
-export function useNotifications(filters?: Record<string, unknown>) {
+export function useNotifications(
+  filters?: Record<string, unknown>,
+  options?: { enabled?: boolean },
+) {
+  const enabled = options?.enabled ?? true
   const notifications = useNotificationStore((s) => s.notifications)
   const unreadCount = useNotificationStore((s) => s.unreadCount)
   const latestCritical = useNotificationStore((s) => s.latestCritical)
@@ -116,7 +126,7 @@ export function useNotifications(filters?: Record<string, unknown>) {
   const removeLocal = useNotificationStore((s) => s.removeNotification)
 
   const { data, mutate, isLoading } = useSWR<NotificationListResponse>(
-    queryKeys.notifications.list(filters),
+    enabled ? queryKeys.notifications.list(filters) : null,
     () => swrFetcher<NotificationListResponse>(buildListPath(filters)),
   )
 
@@ -166,4 +176,34 @@ export function useNotifications(filters?: Record<string, unknown>) {
     removeNotification,
     clearRead,
   }
+}
+
+/** Lightweight unread badge — deferred so it does not block first paint. */
+export function useNotificationUnreadBadge() {
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
+  const unreadCount = useNotificationStore((s) => s.unreadCount)
+  const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const run = () => setEnabled(true)
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(run, { timeout: 3000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const t = window.setTimeout(run, 2000)
+    return () => window.clearTimeout(t)
+  }, [])
+
+  const { data } = useSWR<NotificationListResponse>(
+    enabled ? '/notifications?limit=1' : null,
+    () => swrFetcher<NotificationListResponse>('/notifications?limit=1'),
+    { dedupingInterval: 60_000 },
+  )
+
+  useEffect(() => {
+    if (data) setUnreadCount(data.unreadCount)
+  }, [data, setUnreadCount])
+
+  return unreadCount
 }

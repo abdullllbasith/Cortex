@@ -24,8 +24,8 @@ export interface FormStepperProps<T extends FieldValues = FieldValues> {
   /** sessionStorage key for step progress */
   storageKey?: string
   onComplete?: () => void
-  /** Called after a step validates successfully and before advancing (not on final step) */
-  onStepAdvance?: (stepIndex: number, values: T) => void | Promise<void>
+  /** Called after a step validates successfully and before advancing (not on final step). Return false to stay on the step. */
+  onStepAdvance?: (stepIndex: number, values: T) => boolean | void | Promise<boolean | void>
   className?: string
 }
 
@@ -43,6 +43,7 @@ export function FormStepper<T extends FieldValues>({
   const { trigger, getValues } = useFormContext<T>()
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
+  const [advancing, setAdvancing] = useState(false)
 
   /* Restore step from sessionStorage */
   useEffect(() => {
@@ -85,13 +86,22 @@ export function FormStepper<T extends FieldValues>({
     const valid = await trigger(step.fields, { shouldFocus: true })
     if (!valid) return
 
-    setCompletedSteps((prev) => new Set([...prev, currentStep]))
+    setAdvancing(true)
+    try {
+      if (!isLast) {
+        const canAdvance = await onStepAdvance?.(currentStep, getValues())
+        if (canAdvance === false) return
+      }
 
-    if (isLast) {
-      onComplete?.()
-    } else {
-      await onStepAdvance?.(currentStep, getValues())
-      setCurrentStep((s) => s + 1)
+      setCompletedSteps((prev) => new Set([...prev, currentStep]))
+
+      if (isLast) {
+        onComplete?.()
+      } else {
+        setCurrentStep((s) => s + 1)
+      }
+    } finally {
+      setAdvancing(false)
     }
   }, [currentStep, isLast, onComplete, onStepAdvance, steps, trigger, getValues])
 
@@ -195,6 +205,8 @@ export function FormStepper<T extends FieldValues>({
           variant="primary"
           size="sm"
           onClick={goNext}
+          loading={advancing}
+          disabled={advancing}
         >
           {isLast ? 'Complete' : 'Next'}
         </Button>

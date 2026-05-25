@@ -450,6 +450,31 @@ button:disabled {
   -webkit-overflow-scrolling: touch;
 }
 
+/** Dark panels (sidebar) — scrollbar matches slate-950 chrome, brand on hover */
+.scroll-area-dark {
+  scrollbar-color: #334155 #020617;
+}
+
+.scroll-area-dark::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-area-dark::-webkit-scrollbar-track {
+  background: #020617;
+  border-radius: 9999px;
+}
+
+.scroll-area-dark::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+  border: 1px solid #0f172a;
+}
+
+.scroll-area-dark::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-brand, #4f46e5) 45%, #475569);
+}
+
 /* ── Invisible / accessible visually hidden ───────────────────────────────── */
 .sr-only {
   position: absolute;
@@ -705,6 +730,11 @@ button:disabled {
 @keyframes shimmer {
   from { background-position: -200% 0; }
   to   { background-position:  200% 0; }
+}
+
+@keyframes nav-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
 }
 
 @keyframes spin {

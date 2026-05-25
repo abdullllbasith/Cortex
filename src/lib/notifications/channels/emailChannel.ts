@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { sendMail, isEmailConfigured } from '@/lib/email/mailTransport'
+import { resolveAppUrl } from '@/lib/utils'
 
 export async function sendEmailNotification(params: {
   tenantId: string
@@ -25,8 +26,9 @@ export async function sendEmailNotification(params: {
 }
 
 export function formatEmailHtml(title: string, body: string, actionUrl?: string, actionLabel?: string): string {
-  const cta = actionUrl
-    ? `<p style="margin-top:16px"><a href="${actionUrl}" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">${actionLabel ?? 'Open in SAIOS'}</a></p>`
+  const href = resolveAppUrl(actionUrl)
+  const cta = href
+    ? `<p style="margin-top:16px"><a href="${href}" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">${actionLabel ?? 'Open in SAIOS'}</a></p>`
     : ''
   return `<!DOCTYPE html><html><body style="font-family:Inter,sans-serif;color:#0f172a"><h2>${title}</h2><p>${body}</p>${cta}</body></html>`
 }

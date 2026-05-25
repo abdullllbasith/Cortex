@@ -215,6 +215,40 @@ export async function getCriticalReorderCount(tenantId: string): Promise<number>
   return alerts.filter((a) => a.urgency === 'CRITICAL').length
 }
 
+/** Lightweight badge count for sidebar — avoids full EOQ suggestion build. */
+export async function getReorderSuggestionCount(
+  tenantId: string,
+): Promise<{ count: number; lastCheckedAt: string | null }> {
+  const [alerts, snoozed, lastCheckedAt] = await Promise.all([
+    checkReorderPoints(tenantId, { skipTouch: true }),
+    getSnoozedProductIds(tenantId),
+    getLastReorderCheck(tenantId),
+  ])
+  const count = alerts.filter((a) => {
+    const u = toSuggestionUrgency(a.urgency)
+    return u && !snoozed.has(a.productId)
+  }).length
+  return { count, lastCheckedAt }
+}
+
+/** Fast low-stock summary for dashboard KPIs (SQL aggregation, no agent). */
+export async function getLowStockSummaryForDashboard(tenantId: string, take = 5) {
+  const alerts = await checkReorderPoints(tenantId, { skipTouch: true })
+  const low = alerts.filter((a) => a.urgency !== 'NORMAL')
+  const sorted = [...low].sort((a, b) => a.quantityOnHand - b.quantityOnHand)
+  return {
+    count: low.length,
+    items: sorted.slice(0, take).map((a) => ({
+      productId: a.productId,
+      productName: a.productName,
+      sku: a.sku,
+      quantityOnHand: a.quantityOnHand,
+      reorderPoint: a.reorderPoint,
+      urgency: a.urgency === 'CRITICAL' ? 'critical' : 'warning',
+    })),
+  }
+}
+
 async function getSnoozedProductIds(tenantId: string): Promise<Set<string>> {
   const now = new Date()
   const rows = await prisma.reorderSnooze.findMany({

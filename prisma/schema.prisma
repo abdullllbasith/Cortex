@@ -2329,7 +2329,7 @@ model User {
   id                String    @id @default(cuid())
   tenantId          String
   supabaseId        String    @unique
-  email             String
+  email             String    @unique
   fullName          String
   jobTitle          String?
   phone             String?
@@ -2381,7 +2381,6 @@ model User {
   payrollRunsProcessed  PayrollRun[]   @relation("PayrollProcessor")
   payrollRunsApproved   PayrollRun[]   @relation("PayrollApprover")
 
-  @@unique([tenantId, email])
   @@index([tenantId, role])
   @@index([tenantId, isActive])
   @@map("users")

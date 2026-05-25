@@ -1,12 +1,7 @@
-import { PDFParse } from 'pdf-parse'
 import { sanitizePostgresText } from '@/lib/knowledge/sanitizeText'
+import { DocumentParseError } from '@/lib/knowledge/documentParseErrors'
 
-export class DocumentParseError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'DocumentParseError'
-  }
-}
+export { DocumentParseError } from '@/lib/knowledge/documentParseErrors'
 
 const MAX_CONTENT_CHARS = 50_000
 
@@ -24,6 +19,7 @@ export function resolveKnowledgeMimeType(fileName: string, mimeType: string): st
 }
 
 async function parsePdf(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
   try {
     const result = await parser.getText()

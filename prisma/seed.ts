@@ -1,5 +1,6 @@
-import { PrismaClient, TenantPlan, BusinessKnowledgeType } from '@prisma/client'
+import { TenantPlan, BusinessKnowledgeType } from '@prisma/client'
 import { createHash } from 'crypto'
+import prisma from '../src/lib/db/prisma'
 import { seedPipelinesForTenant } from '../src/lib/crm/pipelineService'
 import { seedCrmEventWorkflowsForTenant } from '../src/lib/crm/crmWorkflowSeed'
 import { seedCrossModuleWorkflowsForTenant } from '../src/lib/workflows/crossModuleWorkflowSeed'
@@ -9,8 +10,6 @@ import {
   seedDashboardActivity,
   seedHrForTenant,
 } from './seedHr'
-
-const prisma = new PrismaClient()
 
 const TENANTS = [
   { name: 'Acme Corporation', slug: 'acme-corp', plan: TenantPlan.ENTERPRISE },
@@ -26,8 +25,26 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+async function ensureDatabaseReady() {
+  const maxAttempts = 5
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      return
+    } catch (err) {
+      if (attempt === maxAttempts) throw err
+      const delayMs = attempt * 1500
+      console.warn(
+        `Database unreachable (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms…`,
+      )
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+}
+
 async function main() {
   console.log('🌱 Seeding SAIOS Knowledge Engine…')
+  await ensureDatabaseReady()
 
   for (const t of TENANTS) {
     const tenant = await prisma.tenant.upsert({
@@ -107,8 +124,20 @@ async function main() {
       const content = `${p.name} ${JSON.stringify(p.catalog)}`
       const sku = p.catalog.sku
       const sellingPrice = p.pricingHistory[0]?.price ?? 0
-      await prisma.product.create({
-        data: {
+      await prisma.product.upsert({
+        where: { tenantId_sku: { tenantId: tenant.id, sku } },
+        update: {
+          name: p.name,
+          description: p.catalog.description,
+          catalog: p.catalog,
+          inventoryLevel: p.inventoryLevel,
+          supplierInfo: p.supplierInfo,
+          pricingHistory: p.pricingHistory,
+          sellingPrice,
+          costPrice: Math.round(sellingPrice * 0.6 * 100) / 100,
+          embeddingContentHash: hash(content),
+        },
+        create: {
           tenantId: tenant.id,
           sku,
           slug: slugify(p.name),
@@ -134,10 +163,25 @@ async function main() {
 
     for (const s of suppliers) {
       const content = `${s.name} score:${s.performanceScore}`
-      await prisma.supplier.create({
-        data: {
+      const code = slugify(s.name).toUpperCase().replace(/-/g, '_') || 'SUPPLIER'
+      await prisma.supplier.upsert({
+        where: { tenantId_code: { tenantId: tenant.id, code } },
+        update: {
+          name: s.name,
+          performanceScore: s.performanceScore,
+          deliveryHistory: s.deliveryHistory,
+          reliabilityMetrics: s.reliabilityMetrics,
+          costTrends: s.costTrends,
+          embeddingContentHash: hash(content),
+        },
+        create: {
           tenantId: tenant.id,
-          ...s,
+          code,
+          name: s.name,
+          performanceScore: s.performanceScore,
+          deliveryHistory: s.deliveryHistory,
+          reliabilityMetrics: s.reliabilityMetrics,
+          costTrends: s.costTrends,
           embeddingContentHash: hash(content),
         },
       })
@@ -163,6 +207,12 @@ async function main() {
     }
 
     // Analytics events (Module 04) — link sales to CRM contacts when available
+    const existingSalesEvents = await prisma.salesEvent.count({ where: { tenantId: tenant.id } })
+    if (existingSalesEvents >= 200) {
+      console.log(`  ✓ Analytics events (${tenant.slug}): already seeded`)
+      continue
+    }
+
     const tenantContacts = await prisma.crmContact.findMany({ where: { tenantId: tenant.id }, take: 3 })
     const tenantCustomers = await prisma.customer.findMany({ where: { tenantId: tenant.id }, take: 3 })
     const tenantProducts = await prisma.product.findMany({ where: { tenantId: tenant.id }, take: 3 })

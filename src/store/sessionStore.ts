@@ -10,6 +10,9 @@ interface SessionState {
   permissions: string[]
   accessToken: string | null
   refreshToken: string | null
+  /** Dev-only: false until DevSessionBootstrap finishes reconciling tenant/token. */
+  devSessionSynced: boolean
+  setDevSessionSynced: (synced: boolean) => void
   setSession: (data: {
     user: User
     tenant: Tenant
@@ -19,6 +22,7 @@ interface SessionState {
   }) => void
   setTokens: (accessToken: string, refreshToken?: string) => void
   updateUser: (patch: Partial<User>) => void
+  updateTenant: (patch: Partial<Tenant>) => void
   clearSession: () => void
   hasPermission: (permission: string) => boolean
 }
@@ -31,6 +35,8 @@ export const useSessionStore = create<SessionState>()(
       permissions:  [],
       accessToken:  null,
       refreshToken: null,
+      devSessionSynced: true,
+      setDevSessionSynced: (synced) => set({ devSessionSynced: synced }),
 
       setSession: ({ user, tenant, permissions = [], accessToken, refreshToken }) =>
         set({ user, tenant, permissions, accessToken, refreshToken: refreshToken ?? null }),
@@ -46,6 +52,11 @@ export const useSessionStore = create<SessionState>()(
           user: s.user ? { ...s.user, ...patch } : s.user,
         })),
 
+      updateTenant: (patch) =>
+        set((s) => ({
+          tenant: s.tenant ? { ...s.tenant, ...patch } : s.tenant,
+        })),
+
       clearSession: () =>
         set({
           user: null,
@@ -53,6 +64,7 @@ export const useSessionStore = create<SessionState>()(
           permissions: [],
           accessToken: null,
           refreshToken: null,
+          devSessionSynced: process.env.NODE_ENV === 'development' ? false : true,
         }),
 
       hasPermission: (permission) => {
@@ -76,4 +88,31 @@ export const useSessionStore = create<SessionState>()(
 /** Non-hook accessor for apiClient (outside React) */
 export function getSessionSnapshot() {
   return useSessionStore.getState()
+}
+
+/** Safe persist helpers — `persist` is unavailable during SSR. */
+export function hasSessionHydrated(): boolean {
+  if (typeof window === 'undefined') return false
+  return useSessionStore.persist?.hasHydrated?.() ?? false
+}
+
+export function onSessionHydrated(callback: () => void): (() => void) | undefined {
+  if (typeof window === 'undefined') return undefined
+  const persist = useSessionStore.persist
+  if (!persist?.hasHydrated || !persist.onFinishHydration) {
+    callback()
+    return undefined
+  }
+  if (persist.hasHydrated()) {
+    callback()
+    return undefined
+  }
+  return persist.onFinishHydration(callback)
+}
+
+export function rehydrateSessionStore(): void {
+  if (typeof window === 'undefined') return
+  if (!useSessionStore.persist?.hasHydrated?.()) {
+    void useSessionStore.persist?.rehydrate?.()
+  }
 }

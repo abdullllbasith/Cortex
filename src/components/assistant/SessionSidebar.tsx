@@ -44,7 +44,7 @@ export function SessionSidebar({
   }
 
   return (
-    <aside className="w-64 shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-slate-50 dark:bg-slate-900/50">
+    <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
       <div className="p-3 border-b border-slate-200 dark:border-slate-700">
         <Button
           onClick={onNewSession}
@@ -56,7 +56,7 @@ export function SessionSidebar({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-area p-2 space-y-0.5">
         {isLoading && (
           <div className="flex items-center justify-center py-8 text-slate-400">
             <Loader2 className="w-5 h-5 animate-spin" />

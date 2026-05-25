@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { getTitleFromPathname } from './nav-config'
-import { CommandPalette } from './CommandPalette'
+import { LazyCommandPalette } from '@/lib/lazy/components'
 import { NotificationDropdown } from '@/components/notifications/NotificationDropdown'
 import { useSessionStore } from '@/store/sessionStore'
 import { signOutUser } from '@/lib/auth/signOut'
@@ -150,7 +150,9 @@ export function TopBar() {
         )}
       </header>
 
-      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} fullScreen={cmdFullscreen} />
+      {cmdOpen ? (
+        <LazyCommandPalette open={cmdOpen} onOpenChange={setCmdOpen} fullScreen={cmdFullscreen} />
+      ) : null}
     </>
   )
 }

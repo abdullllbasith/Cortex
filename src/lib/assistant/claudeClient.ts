@@ -1,7 +1,8 @@
 import OpenAI from 'openai'
 import type { ConversationTurn } from './types'
 
-const DEFAULT_MODEL = process.env.OPENAI_ASSISTANT_MODEL ?? 'gpt-4o'
+const DEFAULT_MODEL = process.env.OPENAI_ASSISTANT_MODEL ?? 'gpt-4o-mini'
+const DEFAULT_MAX_TOKENS = Number(process.env.OPENAI_ASSISTANT_MAX_TOKENS ?? 1536)
 
 let client: OpenAI | null = null
 
@@ -48,7 +49,7 @@ export async function completeWithClaude(params: ClaudeMessageParams): Promise<s
 
   const response = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
-    max_tokens: params.maxTokens ?? 4096,
+    max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
     temperature: params.temperature ?? 0.3,
     messages: toChatMessages(params),
   })
@@ -66,7 +67,7 @@ export async function* streamWithClaude(
 
   const stream = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
-    max_tokens: params.maxTokens ?? 4096,
+    max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
     temperature: params.temperature ?? 0.3,
     messages: toChatMessages(params),
     stream: true,

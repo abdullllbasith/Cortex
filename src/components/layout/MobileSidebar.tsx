@@ -69,7 +69,7 @@ export function MobileSidebar() {
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 overflow-y-auto py-3 scroll-area">
+          <nav className="flex-1 overflow-y-auto py-3 scroll-area scroll-area-dark">
             {navSections.map((section) => (
               <div key={section.label} className="mb-1">
                 <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 select-none first:mt-1">

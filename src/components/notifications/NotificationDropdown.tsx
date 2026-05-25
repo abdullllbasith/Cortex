@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { useNotifications } from '@/hooks/useNotifications'
+import { useNotificationUnreadBadge, useNotifications } from '@/hooks/useNotifications'
 import type { NotificationDTO } from '@/lib/notifications/types'
 import type { NotificationType } from '@prisma/client'
 import type { NotificationSeverity } from '@prisma/client'
@@ -42,7 +42,13 @@ const typeIcons: Record<NotificationType, typeof Bell> = {
 export function NotificationDropdown() {
   const router = useRouter()
   const [tab, setTab] = useState<FilterTab>('all')
-  const { notifications, unreadCount, latestCritical, markRead, markAllRead } = useNotifications()
+  const [open, setOpen] = useState(false)
+  const badgeUnread = useNotificationUnreadBadge()
+  const { notifications, unreadCount, latestCritical, markRead, markAllRead } = useNotifications(
+    undefined,
+    { enabled: open },
+  )
+  const displayUnread = open ? unreadCount : badgeUnread
 
   const filtered = useMemo(() => {
     switch (tab) {
@@ -65,11 +71,11 @@ export function NotificationDropdown() {
   ]
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          aria-label={`${unreadCount} unread notifications`}
+          aria-label={`${displayUnread} unread notifications`}
           className={cn(
             'relative flex h-8 w-8 items-center justify-center rounded-md transition-colors',
             'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
@@ -84,7 +90,7 @@ export function NotificationDropdown() {
             />
           )}
           <Bell className="h-4 w-4" aria-hidden="true" />
-          {unreadCount > 0 && (
+          {displayUnread > 0 && (
             <span
               aria-hidden="true"
               className={cn(
@@ -92,7 +98,7 @@ export function NotificationDropdown() {
                 'bg-red-500 px-1 text-[10px] font-bold text-white animate-scaleIn',
               )}
             >
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {displayUnread > 99 ? '99+' : displayUnread}
             </span>
           )}
         </button>
@@ -109,7 +115,7 @@ export function NotificationDropdown() {
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notifications</p>
-            {unreadCount > 0 && (
+            {displayUnread > 0 && (
               <button
                 type="button"
                 onClick={() => void markAllRead()}

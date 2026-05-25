@@ -10,7 +10,7 @@ import { FormInput, FormCheckbox } from '@/components/forms'
 import { useAppForm } from '@/lib/forms/formConfig'
 import { loginSchema, type LoginFormValues } from '@/lib/auth/schemas'
 import { createSupabaseBrowserClient } from '@/lib/auth/supabaseClient'
-import { useSessionStore } from '@/store/sessionStore'
+import { applyAuthSession, hydrateSessionFromServer } from '@/lib/auth/sessionClient'
 import { OAuthButtons } from './OAuthButtons'
 import { PasswordInput } from './PasswordInput'
 import { Controller } from 'react-hook-form'
@@ -46,8 +46,16 @@ async function bootstrapSession(payload: {
     throw new Error(json.error?.message ?? 'Sign in failed')
   }
   return json.data as {
-    user: { id: string; email: string; name: string; role: string }
-    tenant: { id: string; name: string; slug: string; plan: string }
+    user: { id: string; email: string; name: string; role: string; avatarUrl?: string | null }
+    tenant: {
+      id: string
+      name: string
+      slug: string
+      plan: string
+      logoUrl?: string | null
+      primaryColor?: string | null
+      secondaryColor?: string | null
+    }
     permissions: string[]
     accessToken: string
     mfaRequired?: boolean
@@ -102,17 +110,16 @@ export function LoginForm() {
         tenantSlug,
       )
 
-      useSessionStore.getState().setSession({
-        user: {
-          id: result.user.id,
-          email: result.user.email,
-          name: result.user.name,
-          role: result.user.role,
-        },
+      applyAuthSession({
+        user: result.user,
         tenant: result.tenant,
         permissions: result.permissions,
         accessToken: result.accessToken,
       })
+
+      if (!result.mfaRequired) {
+        await hydrateSessionFromServer()
+      }
 
       if (result.mfaRequired) {
         const mfaUrl = searchParams.get('redirect')

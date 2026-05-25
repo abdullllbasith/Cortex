@@ -153,6 +153,9 @@ export interface Tenant {
   name: string
   slug: string
   plan: string
+  logoUrl?: string | null
+  primaryColor?: string | null
+  secondaryColor?: string | null
 }
 
 export interface TeamMember extends User {

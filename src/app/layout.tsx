@@ -51,6 +51,10 @@ export const metadata: Metadata = {
     images: ['/og-image.png'],
   },
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+  },
 }
 
 export const viewport: Viewport = {

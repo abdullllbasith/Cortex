@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { classifyIntent } from './intentClassifier'
+import { classifyIntent, isLightweightAssistantMessage } from './intentClassifier'
 import { routeActionHandler } from './actionHandlers'
 import {
   detectModuleContext,
@@ -153,11 +153,13 @@ export async function runConversationEngine(
 export async function* streamConversationEngine(
   input: ConversationEngineInput & { sessionSummary?: string },
 ): AsyncGenerator<
+  | { type: 'status'; content: string }
   | { type: 'token'; content: string }
   | { type: 'metadata'; data: ConversationEngineResult },
   void,
   unknown
 > {
+  yield { type: 'status', content: 'Preparing context…' }
   const ctx = await prepareEngineContext(input)
 
   if (!isAssistantLlmAvailable()) {
@@ -208,13 +210,25 @@ async function prepareEngineContext(
 
   const classification = classifyIntent(userMessage)
   const modules = detectModuleContext(userMessage)
+  const skipHeavyContext = isLightweightAssistantMessage(userMessage, classification)
+
+  const emptyErp = {
+    structured: {},
+    formatted: 'No module-specific live data loaded for this query.',
+  }
 
   const [sourcesUsed, tenantName, userName, erpBuilt, actionsTaken] = await Promise.all([
-    searchErpKnowledge(tenantId, userMessage, modules, 10),
+    skipHeavyContext
+      ? Promise.resolve([] as Awaited<ReturnType<typeof searchErpKnowledge>>)
+      : searchErpKnowledge(tenantId, userMessage, modules, 5),
     inputTenantName ? Promise.resolve(inputTenantName) : resolveTenantName(tenantId),
     inputUserName ? Promise.resolve(inputUserName) : resolveUserName(userId),
-    buildERPContext(tenantId, modules),
-    routeActionHandler(tenantId, userId, userMessage, classification),
+    skipHeavyContext || modules.length === 0
+      ? Promise.resolve(emptyErp)
+      : buildERPContext(tenantId, modules),
+    skipHeavyContext
+      ? Promise.resolve([] as ConversationEngineResult['actionsTaken'])
+      : routeActionHandler(tenantId, userId, userMessage, classification),
   ])
 
   const knowledgeContext = formatKnowledgeContext(sourcesUsed)

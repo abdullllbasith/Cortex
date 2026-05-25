@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { getSessionSnapshot } from '@/store/sessionStore'
+import { supabaseOptionsForRuntime } from './nodeTransport'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -8,7 +9,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 /** Browser Supabase client — optional direct access; uploads go through /api/storage/upload */
 export const supabase =
   supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
+    ? createClient(supabaseUrl, supabaseAnonKey, supabaseOptionsForRuntime())
     : null
 
 export interface UploadProgress {

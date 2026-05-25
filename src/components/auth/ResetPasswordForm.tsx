@@ -1,22 +1,27 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { FormProvider } from 'react-hook-form'
 import { Button } from '@/components/ui'
 import { Card, CardBody } from '@/components/ui/Card'
 import { FormInput } from '@/components/forms'
 import { useAppForm } from '@/lib/forms/formConfig'
 import { resetPasswordSchema, type ResetPasswordValues } from '@/lib/auth/schemas'
-import { updatePassword } from '@/lib/supabase/auth'
 import { PasswordStrengthMeter } from './PasswordStrengthMeter'
 import { SuccessState } from './SuccessState'
 
 export function ResetPasswordForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const tokenHash = useMemo(() => {
+    const raw = searchParams.get('token_hash')
+    return raw ? decodeURIComponent(raw) : null
+  }, [searchParams])
 
   const form = useAppForm<ResetPasswordValues>({
     schema: resetPasswordSchema,
@@ -26,15 +31,53 @@ export function ResetPasswordForm() {
   const password = form.watch('password')
 
   const onSubmit = form.handleSubmit(async (values) => {
+    if (!tokenHash) {
+      setError('Missing reset token. Request a new link from your email.')
+      return
+    }
+
     setError(null)
     try {
-      await updatePassword(values.password)
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: values.password,
+          confirmPassword: values.confirmPassword,
+          token_hash: tokenHash,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message ?? 'Failed to update password')
+      }
+
       setDone(true)
       setTimeout(() => router.push('/login'), 3000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update password')
     }
   })
+
+  if (!tokenHash) {
+    return (
+      <Card>
+        <CardBody className="p-8">
+          <h1 className="font-display text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Reset link required
+          </h1>
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+            This link is missing a reset token. Request a new one from your email.
+          </p>
+          <p className="mt-6 text-center text-sm text-slate-500">
+            <Link href="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+              Request a new reset link
+            </Link>
+          </p>
+        </CardBody>
+      </Card>
+    )
+  }
 
   if (done) {
     return (

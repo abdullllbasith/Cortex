@@ -26,3 +26,17 @@ export function formatCompact(n: number): string {
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+/**
+ * Turn an app path (/settings/audit) into a full URL for emails and external links.
+ * Relative paths in email become invalid (e.g. http:///settings/audit) without a host.
+ */
+export function resolveAppUrl(path?: string | null): string | undefined {
+  if (!path?.trim()) return undefined
+  const trimmed = path.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return base ? `${base}${normalized}` : normalized
+}

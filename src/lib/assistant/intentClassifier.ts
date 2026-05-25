@@ -185,3 +185,21 @@ export function classifyIntent(message: string): IntentClassification {
     handler,
   }
 }
+
+/** Skip RAG/ERP for short greetings — saves embedding + DB latency. */
+export function isLightweightAssistantMessage(
+  message: string,
+  classification: IntentClassification,
+): boolean {
+  if (classification.intent === 'COMMAND' && classification.confidence >= 0.85) {
+    return false
+  }
+
+  const text = message.trim()
+  if (text.length > 80) return false
+
+  return (
+    /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|help|bye|goodbye)[\s!.?]*$/i.test(text)
+    || /^(what can you do|who are you|how are you)/i.test(text)
+  )
+}

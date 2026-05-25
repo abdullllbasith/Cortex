@@ -133,7 +133,11 @@ export default function GeneralSettingsPage() {
       },
     })
     toast.success('Workspace settings saved')
-    notifyBrandingUpdated()
+    notifyBrandingUpdated({
+      logoUrl: logo || null,
+      primaryColor: values.primaryColor,
+      secondaryColor: values.secondaryColor,
+    })
     void mutate()
   }
 

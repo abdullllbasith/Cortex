@@ -8,6 +8,7 @@ import {
 import { notificationService } from '@/lib/notifications/notificationService'
 import { Decimal } from '@prisma/client/runtime/library'
 import { prisma } from '@/lib/db/prisma'
+import { assertEmailAvailable, EmailAlreadyRegisteredError } from '@/lib/auth/emailAvailability'
 import { encryptField, decryptField } from '@/lib/security/encryption'
 import { emitSaiosEvent } from '@/lib/workflows/eventBus'
 import { currentFiscalYear, toNumber } from './hrTypes'
@@ -232,6 +233,15 @@ export async function createEmployee(
 
   let userId = data.userId ?? null
   if (data.createUserAccount && !userId) {
+    try {
+      await assertEmailAvailable(data.email)
+    } catch (err) {
+      if (err instanceof EmailAlreadyRegisteredError) {
+        throw new Error(err.message)
+      }
+      throw err
+    }
+
     const user = await prisma.user.create({
       data: {
         tenantId,

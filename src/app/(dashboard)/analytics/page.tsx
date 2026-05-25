@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { PageHeader } from '@/components/ui'
-import { AnalyticsPageContent } from './AnalyticsPageContent'
+import { AnalyticsPageContent } from '@/app/(dashboard)/analytics/AnalyticsPageContent'
 
 export const metadata: Metadata = { title: 'Analytics' }
 

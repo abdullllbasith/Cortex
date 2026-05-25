@@ -186,31 +186,42 @@ async function searchKnowledge(
   }))
 }
 
+/** Vector search using a precomputed embedding (avoids duplicate OpenAI calls). */
+export async function semanticSearchWithVector(
+  tenantId: string,
+  vectorLiteral: string,
+  entityType: KnowledgeEntityType | 'all' = 'all',
+  topK = DEFAULT_TOP_K,
+): Promise<SemanticSearchResult[]> {
+  const searches: Promise<SemanticSearchResult[]>[] = []
+
+  if (entityType === 'all' || entityType === 'customer') {
+    searches.push(searchCustomers(tenantId, vectorLiteral, topK))
+  }
+  if (entityType === 'all' || entityType === 'product') {
+    searches.push(searchProducts(tenantId, vectorLiteral, topK))
+  }
+  if (entityType === 'all' || entityType === 'supplier') {
+    searches.push(searchSuppliers(tenantId, vectorLiteral, topK))
+  }
+  if (entityType === 'all' || entityType === 'knowledge') {
+    searches.push(searchKnowledge(tenantId, vectorLiteral, topK))
+  }
+  if (entityType === 'all' || entityType === 'contact') {
+    searches.push(searchContacts(tenantId, vectorLiteral, topK))
+  }
+
+  const results = (await Promise.all(searches)).flat()
+  return results.sort((a, b) => b.similarity - a.similarity).slice(0, topK)
+}
+
 export async function semanticSearch(params: SemanticSearchParams): Promise<SemanticSearchResult[]> {
   const { tenantId, query, entityType = 'all', topK = DEFAULT_TOP_K } = params
   if (!query.trim()) return []
 
   const embedding = await generateEmbedding(query)
   const vectorLiteral = toVectorLiteral(embedding)
-  const results: SemanticSearchResult[] = []
-
-  if (entityType === 'all' || entityType === 'customer') {
-    results.push(...await searchCustomers(tenantId, vectorLiteral, topK))
-  }
-  if (entityType === 'all' || entityType === 'product') {
-    results.push(...await searchProducts(tenantId, vectorLiteral, topK))
-  }
-  if (entityType === 'all' || entityType === 'supplier') {
-    results.push(...await searchSuppliers(tenantId, vectorLiteral, topK))
-  }
-  if (entityType === 'all' || entityType === 'knowledge') {
-    results.push(...await searchKnowledge(tenantId, vectorLiteral, topK))
-  }
-  if (entityType === 'all' || entityType === 'contact') {
-    results.push(...await searchContacts(tenantId, vectorLiteral, topK))
-  }
-
-  return results.sort((a, b) => b.similarity - a.similarity).slice(0, topK)
+  return semanticSearchWithVector(tenantId, vectorLiteral, entityType, topK)
 }
 
 export async function findSimilarEntities(
@@ -219,14 +230,6 @@ export async function findSimilarEntities(
   entityId: string,
   topK = 5,
 ): Promise<SemanticSearchResult[]> {
-  const params: SemanticSearchParams = {
-    tenantId,
-    query: '',
-    entityType,
-    topK: topK + 1,
-  }
-
-  // Use the record's own content as query proxy via direct vector lookup
   const tableMap = {
     customer: 'customers',
     product: 'products',
@@ -234,7 +237,8 @@ export async function findSimilarEntities(
     knowledge: 'business_knowledge',
   } as const
 
-  const table = tableMap[entityType]
+  const table = tableMap[entityType as keyof typeof tableMap]
+  if (!table) return []
 
   const source = await prisma.$queryRawUnsafe<Array<{ embedding: string }>>(
     `SELECT embedding::text AS embedding FROM ${table} WHERE id = $1 AND "tenantId" = $2`,
@@ -246,12 +250,18 @@ export async function findSimilarEntities(
 
   const vectorLiteral = source[0].embedding.replace(/[\[\]]/g, (m) => m)
 
-  const searchFn = {
-    customer: () => searchCustomers(tenantId, vectorLiteral, topK + 1),
-    product: () => searchProducts(tenantId, vectorLiteral, topK + 1),
-    supplier: () => searchSuppliers(tenantId, vectorLiteral, topK + 1),
-    knowledge: () => searchKnowledge(tenantId, vectorLiteral, topK + 1),
-  }[entityType]
+  const searchFn =
+    entityType === 'customer'
+      ? () => searchCustomers(tenantId, vectorLiteral, topK + 1)
+      : entityType === 'product'
+        ? () => searchProducts(tenantId, vectorLiteral, topK + 1)
+        : entityType === 'supplier'
+          ? () => searchSuppliers(tenantId, vectorLiteral, topK + 1)
+          : entityType === 'knowledge'
+            ? () => searchKnowledge(tenantId, vectorLiteral, topK + 1)
+            : null
+
+  if (!searchFn) return []
 
   return (await searchFn()).filter((r) => r.id !== entityId).slice(0, topK)
 }

@@ -13,6 +13,7 @@ import {
   updateSessionTitle,
 } from '@/lib/assistant/conversationMemory'
 import { publishPresenceEvent } from '@/lib/assistant/presenceHub'
+import { prisma } from '@/lib/db/prisma'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,7 +71,18 @@ export const POST = withTenantAuth(async (request, { auth }) => {
       content: body.message,
     })
 
-    const { recentTurns, summary } = await getContextWindow(tenantId, sessionId!)
+    const [{ recentTurns, summary }, profile] = await Promise.all([
+      getContextWindow(tenantId, sessionId!),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          fullName: true,
+          email: true,
+          role: true,
+          tenant: { select: { name: true } },
+        },
+      }),
+    ])
 
     if (body.message.length <= 80 && recentTurns.length <= 1) {
       await updateSessionTitle(sessionId!, body.message.slice(0, 80))
@@ -99,8 +111,13 @@ export const POST = withTenantAuth(async (request, { auth }) => {
             permissions: auth.permissions,
             sessionId: sessionId!,
             sessionSummary: summary,
+            tenantName: profile?.tenant.name,
+            userName: profile?.fullName ?? profile?.email,
+            userRole: profile?.role?.toLowerCase(),
           })) {
-            if (chunk.type === 'token') {
+            if (chunk.type === 'status') {
+              controller.enqueue(encoder.encode(encodeSse({ type: 'status', content: chunk.content })))
+            } else if (chunk.type === 'token') {
               fullAssistantMessage += chunk.content
               controller.enqueue(encoder.encode(encodeSse({ type: 'token', content: chunk.content })))
             } else if (chunk.type === 'metadata') {
@@ -115,18 +132,6 @@ export const POST = withTenantAuth(async (request, { auth }) => {
             suggestedFollowUps: [],
           }
 
-          await saveMessage({
-            sessionId: sessionId!,
-            tenantId,
-            role: MessageRole.ASSISTANT,
-            content: finalResult.assistantMessage || fullAssistantMessage,
-            intent: finalResult.intent?.intent as ConversationIntent | undefined,
-            confidence: finalResult.intent?.confidence,
-            sourcesUsed: finalResult.sourcesUsed as never[],
-            actionsTaken: finalResult.actionsTaken as never[],
-            suggestedFollowUps: finalResult.suggestedFollowUps,
-          })
-
           controller.enqueue(
             encoder.encode(
               encodeSse({
@@ -139,6 +144,18 @@ export const POST = withTenantAuth(async (request, { auth }) => {
               }),
             ),
           )
+
+          void saveMessage({
+            sessionId: sessionId!,
+            tenantId,
+            role: MessageRole.ASSISTANT,
+            content: finalResult.assistantMessage || fullAssistantMessage,
+            intent: finalResult.intent?.intent as ConversationIntent | undefined,
+            confidence: finalResult.intent?.confidence,
+            sourcesUsed: finalResult.sourcesUsed as never[],
+            actionsTaken: finalResult.actionsTaken as never[],
+            suggestedFollowUps: finalResult.suggestedFollowUps,
+          }).catch((err) => console.error('[assistant/chat] save assistant message', err))
 
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         } catch (err) {

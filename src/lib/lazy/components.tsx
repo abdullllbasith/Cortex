@@ -1,20 +1,9 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { Spinner } from '@/components/ui'
+import { LazyFallback, PageFallback } from './fallbacks'
 
-function LazyFallback({ minHeight = 120 }: { minHeight?: number }) {
-  return (
-    <div
-      className="flex w-full items-center justify-center"
-      style={{ minHeight }}
-      aria-busy="true"
-      aria-label="Loading"
-    >
-      <Spinner size="md" />
-    </div>
-  )
-}
+export { LazyFallback, PageFallback } from './fallbacks'
 
 /** Heavy data table — deferred on client. */
 export const LazyDataTable = dynamic(
@@ -25,6 +14,18 @@ export const LazyDataTable = dynamic(
 /** Recharts dashboard chart. */
 export const LazyRevenueChart = dynamic(
   () => import('@/components/dashboard/RevenueChart').then((m) => m.RevenueChart),
+  { loading: () => <LazyFallback minHeight={280} />, ssr: false },
+)
+
+/** Master dashboard chart row (Recharts). */
+export const LazyMasterDashboardCharts = dynamic(
+  () => import('@/components/dashboard/MasterDashboardCharts').then((m) => m.MasterDashboardCharts),
+  { loading: () => <LazyFallback minHeight={260} />, ssr: false },
+)
+
+/** Generic chart panel placeholder for analytics sections. */
+export const LazyChartPanel = dynamic(
+  () => import('@/components/analytics/RevenueChart').then((m) => m.RevenueChart),
   { loading: () => <LazyFallback minHeight={280} />, ssr: false },
 )
 
@@ -62,4 +63,73 @@ export const LazyKPIScorecard = dynamic(
 export const LazyFormRichText = dynamic(
   () => import('@/components/forms/FormRichText').then((m) => m.FormRichText),
   { loading: () => <LazyFallback minHeight={160} />, ssr: false },
+)
+
+/** ⌘K command palette — loaded on first open. */
+export const LazyCommandPalette = dynamic(
+  () => import('@/components/layout/CommandPalette').then((m) => m.CommandPalette),
+  { loading: () => null, ssr: false },
+)
+
+/** Metric card sparkline (Recharts micro chart). */
+export const LazyMetricSparkline = dynamic(
+  () => import('@/components/dashboard/MetricSparkline').then((m) => m.MetricSparkline),
+  { loading: () => <LazyFallback minHeight={32} />, ssr: false },
+)
+
+/* ── Route-level page clients (code-split per section) ─────────────────── */
+
+export const LazyMasterDashboardClient = dynamic(
+  () => import('@/components/dashboard/MasterDashboardClient').then((m) => m.MasterDashboardClient),
+  { loading: () => <PageFallback minHeight={560} />, ssr: false },
+)
+
+export const LazyFinanceDashboardClient = dynamic(
+  () => import('@/components/finance/FinanceDashboardClient').then((m) => m.FinanceDashboardClient),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyInventoryDashboardClient = dynamic(
+  () => import('@/components/inventory/InventoryDashboardClient').then((m) => m.InventoryDashboardClient),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyHrDashboardClient = dynamic(
+  () => import('@/components/hr/HrDashboardClient').then((m) => m.HrDashboardClient),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyCrmDashboardClient = dynamic(
+  () => import('@/components/crm/CrmDashboardClient').then((m) => m.CrmDashboardClient),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyCrmAnalyticsClient = dynamic(
+  () => import('@/components/crm/CrmAnalyticsClient').then((m) => m.CrmAnalyticsClient),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyPipelineKanbanClient = dynamic(
+  () => import('@/components/crm/PipelineKanbanClient').then((m) => m.PipelineKanbanClient),
+  { loading: () => <PageFallback minHeight={640} />, ssr: false },
+)
+
+export const LazyAnalyticsPageContent = dynamic(
+  () => import('@/app/(dashboard)/analytics/AnalyticsPageContent').then((m) => m.AnalyticsPageContent),
+  { loading: () => <PageFallback minHeight={720} />, ssr: false },
+)
+
+export const LazyChatInterface = dynamic(
+  () => import('@/components/assistant/ChatInterface').then((m) => m.ChatInterface),
+  { loading: () => <PageFallback minHeight={600} />, ssr: false },
+)
+
+export const LazyPredictionsPageClient = dynamic(
+  () => import('@/app/(dashboard)/predictions/PredictionsPageClient'),
+  { loading: () => <PageFallback />, ssr: false },
+)
+
+export const LazyWorkflowsPageClient = dynamic(
+  () => import('@/app/(dashboard)/workflows/WorkflowsPageClient'),
+  { loading: () => <PageFallback />, ssr: false },
 )

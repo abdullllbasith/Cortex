@@ -232,11 +232,20 @@ export async function createInvitations(
   }))
 
   const existingUsers = await prisma.user.findMany({
-    where: { tenantId, email: { in: normalized.map((i) => i.email) } },
-    select: { email: true },
+    where: { email: { in: normalized.map((i) => i.email) } },
+    select: { email: true, tenantId: true },
   })
   if (existingUsers.length > 0) {
-    throw new Error(`Already members: ${existingUsers.map((u) => u.email).join(', ')}`)
+    const inTenant = existingUsers.filter((u) => u.tenantId === tenantId).map((u) => u.email)
+    const elsewhere = existingUsers.filter((u) => u.tenantId !== tenantId).map((u) => u.email)
+    if (inTenant.length > 0) {
+      throw new Error(`Already members: ${inTenant.join(', ')}`)
+    }
+    if (elsewhere.length > 0) {
+      throw new Error(
+        `Already registered on SAIOS: ${elsewhere.join(', ')}. Use a different email or ask them to sign in.`,
+      )
+    }
   }
 
   const expiresAt = inviteExpiry()

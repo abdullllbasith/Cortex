@@ -188,6 +188,8 @@ export function useAssistantChat(initialSessionId?: string | null) {
             if (parsed.type === 'session' && parsed.sessionId) {
               persistSessionId(parsed.sessionId)
               metadata.sessionId = parsed.sessionId
+            } else if (parsed.type === 'status') {
+              setIsTyping(true)
             } else if (parsed.type === 'token' && parsed.content) {
               setMessages((prev) =>
                 prev.map((m) =>

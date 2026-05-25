@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { supabaseOptionsForRuntime } from './nodeTransport'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -12,6 +13,7 @@ export const DEFAULT_DOCUMENT_BUCKET =
 export function getSupabaseAdmin(): SupabaseClient | null {
   if (!supabaseUrl || !serviceRoleKey) return null
   return createClient(supabaseUrl, serviceRoleKey, {
+    ...supabaseOptionsForRuntime(),
     auth: { persistSession: false, autoRefreshToken: false },
   })
 }

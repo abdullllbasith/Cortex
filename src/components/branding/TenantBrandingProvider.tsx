@@ -17,21 +17,33 @@ export function useTenantBranding(): TenantBranding {
 }
 
 export function TenantBrandingProvider({ children }: { children: ReactNode }) {
-  const tenantId = useSessionStore((s) => s.tenant?.id)
+  const tenant = useSessionStore((s) => s.tenant)
+  const devSessionSynced = useSessionStore((s) => s.devSessionSynced)
+
+  const sessionBranding = useMemo(
+    () => ({
+      name: tenant?.name ?? null,
+      logoUrl: tenant?.logoUrl ?? null,
+      primaryColor: tenant?.primaryColor ?? null,
+      secondaryColor: tenant?.secondaryColor ?? null,
+    }),
+    [tenant],
+  )
 
   const { data, mutate } = useSWR<TenantBranding>(
-    tenantId ? '/settings/branding' : null,
+    tenant?.id && devSessionSynced ? '/settings/branding' : null,
     swrFetcher,
+    { dedupingInterval: 120_000, revalidateOnFocus: false },
   )
 
   const branding = useMemo(
     () => ({
-      name: data?.name ?? null,
-      logoUrl: data?.logoUrl ?? null,
-      primaryColor: data?.primaryColor ?? null,
-      secondaryColor: data?.secondaryColor ?? null,
+      name: data?.name ?? sessionBranding.name ?? null,
+      logoUrl: data?.logoUrl ?? sessionBranding.logoUrl ?? null,
+      primaryColor: data?.primaryColor ?? sessionBranding.primaryColor ?? null,
+      secondaryColor: data?.secondaryColor ?? sessionBranding.secondaryColor ?? null,
     }),
-    [data],
+    [data, sessionBranding],
   )
 
   useEffect(() => {

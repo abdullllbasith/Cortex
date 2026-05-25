@@ -1,12 +1,8 @@
 import type { Metadata } from 'next'
-import WorkflowsPageClient from './WorkflowsPageClient'
+import WorkflowsPageClient from '@/app/(dashboard)/workflows/WorkflowsPageClient'
 
 export const metadata: Metadata = { title: 'Workflows' }
 
 export default function WorkflowsPage() {
-  return <WorkflowsClient />
-}
-
-function WorkflowsClient() {
   return <WorkflowsPageClient />
 }

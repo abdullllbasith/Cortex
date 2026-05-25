@@ -1,13 +1,15 @@
 import { InvoiceStatus, PurchaseOrderStatus, SalesOrderStatus } from '@prisma/client'
-import { semanticSearch, type SemanticSearchResult } from '@/lib/embeddings/semanticSearch'
+import { semanticSearchWithVector, type SemanticSearchResult } from '@/lib/embeddings/semanticSearch'
+import { generateEmbedding } from '@/lib/embeddings/embeddingService'
+import { toVectorLiteral } from '@/lib/embeddings/types'
 import type { KnowledgeEntityType } from '@/lib/embeddings/knowledgeIndexer'
 import { prisma } from '@/lib/db/prisma'
-import { InventoryAgent } from '@/lib/agents/InventoryAgent'
 import { SalesAgent } from '@/lib/agents/SalesAgent'
 import { FinanceAgent } from '@/lib/agents/FinanceAgent'
 import { OperationsAgent } from '@/lib/agents/OperationsAgent'
 import { GL_ACCOUNTS, resolveAccount } from '@/lib/finance/accountResolver'
 import { getAccountBalance } from '@/lib/finance/journalEngine'
+import { getLowStockSummaryForDashboard } from '@/lib/inventory/reorderService'
 
 export type ErpModule = 'inventory' | 'crm' | 'sales' | 'finance' | 'hr'
 
@@ -46,7 +48,7 @@ export function detectModuleContext(message: string): ErpModule[] {
       for (const m of modules) found.add(m)
     }
   }
-  return found.size ? [...found] : ['crm', 'sales']
+  return found.size ? [...found] : []
 }
 
 /** @deprecated Use detectModuleContext */
@@ -66,14 +68,23 @@ export async function searchErpKnowledge(
   tenantId: string,
   query: string,
   modules: ErpModule[],
-  topK = 8,
+  topK = 5,
 ): Promise<SemanticSearchResult[]> {
+  if (!query.trim()) return []
+
   const entityType = semanticEntityTypeForModules(modules)
-  const primary = await semanticSearch({ tenantId, query, entityType, topK })
+  const embedding = await generateEmbedding(query)
+  const vectorLiteral = toVectorLiteral(embedding)
 
-  if (entityType === 'all') return primary
+  if (entityType === 'all') {
+    return semanticSearchWithVector(tenantId, vectorLiteral, 'all', topK)
+  }
 
-  const secondary = await semanticSearch({ tenantId, query, entityType: 'knowledge', topK: 4 })
+  const [primary, secondary] = await Promise.all([
+    semanticSearchWithVector(tenantId, vectorLiteral, entityType, topK),
+    semanticSearchWithVector(tenantId, vectorLiteral, 'knowledge', Math.min(4, topK)),
+  ])
+
   const seen = new Set(primary.map((r) => `${r.entityType}:${r.id}`))
   const merged = [...primary]
   for (const row of secondary) {
@@ -91,6 +102,12 @@ function toNumber(value: { toNumber(): number } | number | null | undefined): nu
   return typeof value === 'number' ? value : value.toNumber()
 }
 
+const ERP_CONTEXT_CACHE_MS = 45_000
+const erpContextCache = new Map<
+  string,
+  { at: number; data: { structured: ERPContextBlock; formatted: string } }
+>()
+
 export interface ERPContextBlock {
   inventory?: { lowStockCount: number; totalValue: number; pendingPOs: number }
   crm?: { openDeals: number; overdueFollowUps: number; pipelineValue: number }
@@ -103,6 +120,19 @@ export async function buildERPContext(
   tenantId: string,
   modules: ErpModule[],
 ): Promise<{ structured: ERPContextBlock; formatted: string }> {
+  if (modules.length === 0) {
+    return {
+      structured: {},
+      formatted: 'No module-specific live data loaded for this query.',
+    }
+  }
+
+  const cacheKey = `${tenantId}:${[...modules].sort().join(',')}`
+  const cached = erpContextCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < ERP_CONTEXT_CACHE_MS) {
+    return cached.data
+  }
+
   const structured: ERPContextBlock = {}
   const lines: string[] = []
 
@@ -111,9 +141,8 @@ export async function buildERPContext(
   if (modules.includes('inventory')) {
     tasks.push(
       (async () => {
-        const agent = new InventoryAgent(tenantId)
         const [lowStock, pendingPOs] = await Promise.all([
-          agent.getLowStockItems(),
+          getLowStockSummaryForDashboard(tenantId, 1),
           prisma.purchaseOrder.count({
             where: {
               tenantId,
@@ -127,22 +156,13 @@ export async function buildERPContext(
             },
           }),
         ])
-        const balances = await prisma.stockBalance.findMany({
-          where: { tenantId },
-          select: { quantityOnHand: true, product: { select: { costPrice: true } } },
-          take: 500,
-        })
-        const totalValue = balances.reduce(
-          (s, b) => s + toNumber(b.quantityOnHand) * toNumber(b.product.costPrice),
-          0,
-        )
         structured.inventory = {
           lowStockCount: lowStock.count,
-          totalValue: Math.round(totalValue * 100) / 100,
+          totalValue: 0,
           pendingPOs,
         }
         lines.push(
-          `INVENTORY: ${lowStock.count} SKUs below reorder point; inventory value ~$${structured.inventory.totalValue.toLocaleString()}; ${pendingPOs} open purchase order(s).`,
+          `INVENTORY: ${lowStock.count} SKU(s) below reorder point; ${pendingPOs} open purchase order(s).`,
         )
       })(),
     )
@@ -270,10 +290,12 @@ export async function buildERPContext(
 
   await Promise.all(tasks)
 
-  return {
+  const result = {
     structured,
     formatted: lines.length ? lines.join('\n') : 'No module-specific live data loaded for this query.',
   }
+  erpContextCache.set(cacheKey, { at: Date.now(), data: result })
+  return result
 }
 
 /** Format live ERP context for the system prompt. */

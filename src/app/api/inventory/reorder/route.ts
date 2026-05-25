@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { withTenantAuth, handleRouteError, parseQuery } from '@/lib/knowledge/apiHandler'
 import { apiSuccess } from '@/lib/knowledge/response'
+import { privateCacheHeaders } from '@/lib/http/cacheHeaders'
 import {
   createAllDraftPOs,
   createDraftPO,
   dismissSuggestion,
   dismissSupplierGroup,
   generateReorderSuggestions,
-  getCriticalReorderCount,
+  getReorderSuggestionCount,
   type ReorderUrgency,
 } from '@/lib/inventory/reorderService'
 
@@ -20,11 +21,15 @@ const querySchema = z.object({
 export const GET = withTenantAuth(async (request, { auth }) => {
   try {
     const query = querySchema.parse(parseQuery(request))
-    const result = await generateReorderSuggestions(auth.tenantId, query.urgency as ReorderUrgency)
 
     if (query.countOnly) {
-      return NextResponse.json(apiSuccess({ count: result.totalSuggestions, lastCheckedAt: result.lastCheckedAt }))
+      const { count, lastCheckedAt } = await getReorderSuggestionCount(auth.tenantId)
+      return NextResponse.json(apiSuccess({ count, lastCheckedAt }), {
+        headers: privateCacheHeaders(60, 180),
+      })
     }
+
+    const result = await generateReorderSuggestions(auth.tenantId, query.urgency as ReorderUrgency)
 
     return NextResponse.json(apiSuccess(result))
   } catch (err) {

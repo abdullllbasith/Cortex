@@ -34,6 +34,27 @@ export function RegisterForm() {
 
   const password = form.watch('password')
 
+  const checkEmailAvailable = async (email: string): Promise<boolean> => {
+    const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email.trim())}`)
+    const json = (await res.json()) as { available?: boolean; message?: string }
+    if (!res.ok || json.available === false) {
+      form.setError('email', {
+        type: 'manual',
+        message:
+          json.message ??
+          'An account already exists for this email. Sign in instead.',
+      })
+      return false
+    }
+    form.clearErrors('email')
+    return true
+  }
+
+  const onStepAdvance = async (stepIndex: number, values: RegisterFormValues) => {
+    if (stepIndex !== 0) return true
+    return checkEmailAvailable(values.email)
+  }
+
   const onComplete = form.handleSubmit(async (values) => {
     setError(null)
     try {
@@ -48,18 +69,16 @@ export function RegisterForm() {
         throw new Error(json.error?.message ?? 'Registration failed')
       }
 
-      const { useSessionStore } = await import('@/store/sessionStore')
-      useSessionStore.getState().setSession({
-        user: {
-          id: json.data.user.id,
-          email: json.data.user.email,
-          name: json.data.user.name,
-          role: json.data.user.role,
-        },
+      const { applyAuthSession } = await import('@/lib/auth/sessionClient')
+      applyAuthSession({
+        user: json.data.user,
         tenant: json.data.tenant,
         permissions: json.data.permissions ?? ['*'],
         accessToken: json.data.accessToken,
       })
+
+      const { hydrateSessionFromServer } = await import('@/lib/auth/sessionClient')
+      await hydrateSessionFromServer()
 
       router.push('/setup')
     } catch (err) {
@@ -151,6 +170,7 @@ export function RegisterForm() {
         steps={steps}
         storageKey="saios:register-stepper"
         onComplete={onComplete}
+        onStepAdvance={onStepAdvance}
       />
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">

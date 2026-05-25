@@ -11,6 +11,12 @@ import { registerSchema } from '@/lib/auth/schemas'
 import { sanitizeInput } from '@/lib/security/sanitizer'
 import { TenantPlan } from '@prisma/client'
 import { seedDefaultAccounts } from '@/lib/finance/chartOfAccountsService'
+import {
+  assertEmailAvailable,
+  EmailAlreadyRegisteredError,
+  normalizeEmail,
+} from '@/lib/auth/emailAvailability'
+import { Prisma } from '@prisma/client'
 
 const PLAN_MAP: Record<string, TenantPlan> = {
   starter: 'STARTER',
@@ -34,12 +40,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = sanitizeInput(registerSchema.parse(await request.json()))
-    const email = body.email.toLowerCase()
+    const email = normalizeEmail(body.email)
     const fullName = `${body.firstName} ${body.lastName}`.trim()
 
     const existingSlug = await prisma.tenant.findUnique({ where: { slug: body.slug } })
     if (existingSlug) {
       return NextResponse.json({ success: false, error: { message: 'Slug already taken' } }, { status: 409 })
+    }
+
+    try {
+      await assertEmailAvailable(email)
+    } catch (err) {
+      if (err instanceof EmailAlreadyRegisteredError) {
+        return NextResponse.json(
+          { success: false, error: { message: err.message, code: err.code } },
+          { status: 409 },
+        )
+      }
+      throw err
     }
 
     const admin = createSupabaseAdminClient()
@@ -97,6 +115,7 @@ export async function POST(request: NextRequest) {
           email: session.user.email,
           name: session.user.fullName,
           role: session.user.role.toLowerCase(),
+          avatarUrl: session.user.avatarUrl,
         },
         tenant: session.tenant,
         permissions: session.permissions,
@@ -111,6 +130,24 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: { message: 'Validation failed', issues: err.issues } }, { status: 400 })
+    }
+    if (err instanceof EmailAlreadyRegisteredError) {
+      return NextResponse.json(
+        { success: false, error: { message: err.message, code: err.code } },
+        { status: 409 },
+      )
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            message: 'This email is already registered. Sign in instead.',
+            code: 'EMAIL_ALREADY_REGISTERED',
+          },
+        },
+        { status: 409 },
+      )
     }
     console.error('[auth/register]', err)
     return NextResponse.json({ success: false, error: { message: 'Registration failed' } }, { status: 500 })

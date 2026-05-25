@@ -2,6 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { UserRole } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
+import { assertEmailAvailable, EmailAlreadyRegisteredError } from '@/lib/auth/emailAvailability'
 import { currentFiscalYear } from '@/lib/hr/hrTypes'
 import { WorkflowContext, getByPath } from '../../core/WorkflowContext'
 import type { NodeHandler, WorkflowEngineContext } from '../../types'
@@ -59,6 +60,15 @@ export const setupEmployeeHandler: NodeHandler = async ({ inputData, config }, e
   let temporaryPassword: string | null = null
 
   if (cfg.createUserIfMissing && !userId) {
+    try {
+      await assertEmailAvailable(employee.email)
+    } catch (err) {
+      if (err instanceof EmailAlreadyRegisteredError) {
+        throw nodeError('action.setup_employee', err.message)
+      }
+      throw err
+    }
+
     temporaryPassword = `Welcome-${Math.random().toString(36).slice(2, 10)}!`
     const user = await prisma.user.create({
       data: {
