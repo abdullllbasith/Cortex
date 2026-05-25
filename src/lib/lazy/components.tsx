@@ -34,14 +34,32 @@ export const LazyWorkflowBuilder = dynamic(
   { loading: () => <LazyFallback minHeight={480} />, ssr: false },
 )
 
+/** Workflow analytics charts (Recharts). */
+export const LazyWorkflowAnalytics = dynamic(
+  () => import('@/components/workflows/WorkflowAnalytics').then((m) => m.WorkflowAnalytics),
+  { loading: () => <LazyFallback minHeight={320} />, ssr: false },
+)
+
+/** Predictions forecast chart. */
+export const LazySalesForecastChart = dynamic(
+  () => import('@/components/predictions/SalesForecastChart').then((m) => m.SalesForecastChart),
+  { loading: () => <LazyFallback minHeight={320} />, ssr: false },
+)
+
+/** Supplier risk matrix chart. */
+export const LazySupplierRiskMatrix = dynamic(
+  () => import('@/components/predictions/SupplierRiskMatrix').then((m) => m.SupplierRiskMatrix),
+  { loading: () => <LazyFallback minHeight={320} />, ssr: false },
+)
+
+/** Analytics KPI scorecard with sparklines. */
+export const LazyKPIScorecard = dynamic(
+  () => import('@/components/analytics/KPIScorecard').then((m) => m.KPIScorecard),
+  { loading: () => <LazyFallback minHeight={200} />, ssr: false },
+)
+
 /** Tiptap rich-text editor field. */
 export const LazyFormRichText = dynamic(
   () => import('@/components/forms/FormRichText').then((m) => m.FormRichText),
   { loading: () => <LazyFallback minHeight={160} />, ssr: false },
-)
-
-/** Generic Recharts chart bundle for analytics pages. */
-export const LazyChartPanel = dynamic(
-  () => import('@/components/dashboard/RevenueChart').then((m) => m.RevenueChart),
-  { loading: () => <LazyFallback minHeight={320} />, ssr: false },
 )

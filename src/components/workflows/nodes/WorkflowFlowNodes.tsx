@@ -110,6 +110,8 @@ export function summarizeNode(type: string, config: Record<string, unknown> = {}
   }
   if (type === 'action.update_record') return `Update ${config.entity} ${config.entityId ?? ''}`
   if (type === 'action.generate_document') return `Generate ${config.documentType ?? 'document'}`
+  if (type === 'action.generate_reorder_suggestion') return 'Generate reorder suggestions'
+  if (type === 'action.create_draft_po') return 'Create draft purchase order'
   if (type === 'control.delay') return `Wait ${config.duration} ${config.unit ?? 'minutes'}`
   if (type === 'control.condition') return 'If / else branch'
   return type.split('.').pop() ?? type

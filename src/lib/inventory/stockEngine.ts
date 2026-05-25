@@ -1,6 +1,4 @@
 import {
-  NotificationSeverity,
-  NotificationType,
   MLPredictionType,
   Prisma,
   StockTransferStatus,
@@ -8,18 +6,19 @@ import {
 } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import { prisma } from '@/lib/db/prisma'
-import { notificationService } from '@/lib/notifications/notificationService'
 import {
   emitStockBelowReorder,
   emitStockLevelChanged,
 } from './inventoryWebhooks'
+import { emitSalesEvent } from '@/lib/analytics/salesEventEmitter'
+import { onStockBelowReorder } from './reorderService'
 import {
   InventoryError,
   INBOUND_TRANSACTION_TYPES,
   OUTBOUND_TRANSACTION_TYPES,
   type StockBalanceSnapshot,
   type StockTransaction,
-  type TransferLineItem,
+  parseTransferLineItems,
 } from './types'
 
 function toDecimal(value: number): Decimal {
@@ -59,7 +58,11 @@ async function validateProduct(tenantId: string, productId: string) {
       trackInventory: true,
       reorderPoint: true,
       reorderQuantity: true,
+      supplierId: true,
+      leadTimeDays: true,
       inventoryLevel: true,
+      costPrice: true,
+      sellingPrice: true,
     },
   })
   if (!product) throw new InventoryError('Product not found for tenant', 'PRODUCT_NOT_FOUND')
@@ -157,33 +160,36 @@ async function flagInventoryReforecast(tenantId: string, productId: string): Pro
 
 async function maybeNotifyLowStock(
   tenantId: string,
-  product: { id: string; name: string; sku: string; reorderPoint: Decimal; reorderQuantity?: Decimal },
+  product: {
+    id: string
+    name: string
+    sku: string
+    reorderPoint: Decimal
+    reorderQuantity?: Decimal
+    supplierId?: string | null
+    leadTimeDays?: number | null
+  },
   quantityOnHand: number,
 ): Promise<void> {
   const reorderPoint = toNumber(product.reorderPoint)
   if (reorderPoint <= 0 || quantityOnHand > reorderPoint) return
 
-  await notificationService.send({
-    tenantId,
-    roleTarget: 'MANAGER',
-    type: NotificationType.ALERT,
-    severity: NotificationSeverity.WARNING,
-    title: `Low stock: ${product.name}`,
-    body: `${product.sku} is at ${quantityOnHand} units (reorder point: ${reorderPoint}).`,
-    actionUrl: `/inventory/products/${product.id}`,
-    actionLabel: 'View product',
-    entityId: product.id,
-    metadata: { productId: product.id, quantityOnHand, reorderPoint },
-  })
-
   const reorderQty = toNumber(product.reorderQuantity)
+  void onStockBelowReorder(tenantId, product.id, quantityOnHand).catch(() => {})
+
   emitStockBelowReorder(tenantId, {
     productId: product.id,
     productName: product.name,
     sku: product.sku,
     quantityOnHand,
+    currentStock: quantityOnHand,
     reorderPoint,
-    suggestedOrderQty: Math.max(reorderQty || reorderPoint, reorderPoint - quantityOnHand + (reorderQty || reorderPoint)),
+    supplierId: product.supplierId ?? undefined,
+    leadTimeDays: product.leadTimeDays ?? 7,
+    suggestedOrderQty: Math.max(
+      reorderQty || reorderPoint,
+      reorderPoint - quantityOnHand + (reorderQty || reorderPoint),
+    ),
   })
 }
 
@@ -323,6 +329,29 @@ export async function recordTransaction(
     notes: txInput.notes,
   })
 
+  if (
+    txInput.transactionType === 'SALE' &&
+    txInput.referenceType !== 'sales_order' &&
+    txInput.productId
+  ) {
+    const qty = Math.abs(txInput.quantity)
+    const unitPrice = toNumber(product.sellingPrice) || unitCost
+    const revenue = qty * unitPrice
+    const channel =
+      txInput.referenceType === 'pos' || txInput.referenceType === 'pos_sale' ? 'POS' : 'DIRECT'
+    await emitSalesEvent({
+      tenantId,
+      productId: txInput.productId,
+      quantity: qty,
+      revenue,
+      cost: toNumber(product.costPrice) * qty,
+      channel,
+      timestamp: new Date(),
+      referenceType: txInput.referenceType ?? 'stock_ledger',
+      referenceId: txInput.referenceId ?? ledgerId,
+    }).catch(() => {})
+  }
+
   return { ledgerId, totalOnHand }
 }
 
@@ -421,8 +450,8 @@ export async function transferStock(
     throw new InventoryError('Transfer is cancelled', 'TRANSFER_INVALID_STATE')
   }
 
-  const items = transfer.items as TransferLineItem[]
-  if (!Array.isArray(items) || items.length === 0) {
+  const items = parseTransferLineItems(transfer.items)
+  if (items.length === 0) {
     throw new InventoryError('Transfer has no line items', 'TRANSFER_INVALID_STATE')
   }
 

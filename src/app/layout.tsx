@@ -71,7 +71,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${sora.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="min-h-screen bg-background font-body antialiased">
+      <body
+        suppressHydrationWarning
+        className="min-h-screen bg-background font-body antialiased"
+      >
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

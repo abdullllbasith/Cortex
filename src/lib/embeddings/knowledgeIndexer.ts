@@ -3,7 +3,7 @@ import { EmbeddingStatus, Prisma } from '@prisma/client'
 import { generateEmbeddingsBatch } from './embeddingService'
 import { hashEmbeddingContent, MAX_BATCH_SIZE, toVectorLiteral } from './types'
 
-export type KnowledgeEntityType = 'customer' | 'product' | 'supplier' | 'knowledge'
+export type KnowledgeEntityType = 'customer' | 'product' | 'supplier' | 'knowledge' | 'contact'
 
 export interface IndexingResult {
   entityType: KnowledgeEntityType
@@ -133,6 +133,33 @@ async function fetchUnembeddedRecords(
         return { id: r.id, content, contentHash: hashEmbeddingContent(content) }
       })
     }
+    case 'contact': {
+      const rows = await prisma.crmContact.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { embeddingStatus: EmbeddingStatus.PENDING },
+            { embeddingStatus: EmbeddingStatus.ERROR },
+          ],
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          company: true,
+          jobTitle: true,
+          notes: true,
+          tags: true,
+        },
+      })
+      return rows.map((r) => {
+        const content = [r.firstName, r.lastName, r.email, r.company, r.jobTitle, r.notes, r.tags.join(' ')]
+          .filter(Boolean)
+          .join(' ')
+        return { id: r.id, content, contentHash: hashEmbeddingContent(content) }
+      })
+    }
   }
 }
 
@@ -192,6 +219,16 @@ async function storeEmbedding(
         WHERE id = ${id}
       `
       break
+    case 'contact':
+      await prisma.$executeRaw`
+        UPDATE crm_contacts
+        SET embedding = ${vectorLiteral}::vector,
+            "embeddingStatus" = ${EmbeddingStatus.INDEXED}::text,
+            "embeddingContentHash" = ${contentHash},
+            "embeddingUpdatedAt" = ${now}
+        WHERE id = ${id}
+      `
+      break
   }
 
   void data // satisfy unused in some paths
@@ -210,6 +247,9 @@ async function markEmbeddingError(entityType: KnowledgeEntityType, id: string): 
       break
     case 'knowledge':
       await prisma.businessKnowledge.update({ where: { id }, data: { embeddingStatus: EmbeddingStatus.ERROR } })
+      break
+    case 'contact':
+      await prisma.crmContact.update({ where: { id }, data: { embeddingStatus: EmbeddingStatus.ERROR } })
       break
   }
 }
@@ -280,7 +320,7 @@ export async function indexTenantEntities(
 
 /** Index all entity types for a tenant. */
 export async function indexAllTenantKnowledge(tenantId: string): Promise<IndexingResult[]> {
-  const types: KnowledgeEntityType[] = ['customer', 'product', 'supplier', 'knowledge']
+  const types: KnowledgeEntityType[] = ['customer', 'product', 'supplier', 'knowledge', 'contact']
   const results: IndexingResult[] = []
 
   for (const entityType of types) {
@@ -327,6 +367,16 @@ export async function embedSingleRecord(
       const r = await prisma.businessKnowledge.findFirst({ where: { id, tenantId } })
       if (r) {
         const content = buildKnowledgeContent(r)
+        record = { id: r.id, content, contentHash: hashEmbeddingContent(content) }
+      }
+      break
+    }
+    case 'contact': {
+      const r = await prisma.crmContact.findFirst({ where: { id, tenantId } })
+      if (r) {
+        const content = [r.firstName, r.lastName, r.email, r.company, r.jobTitle, r.notes, r.tags.join(' ')]
+          .filter(Boolean)
+          .join(' ')
         record = { id: r.id, content, contentHash: hashEmbeddingContent(content) }
       }
       break

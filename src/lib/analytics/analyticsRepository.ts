@@ -6,12 +6,15 @@ import {
   computeSalesMetrics,
   computeCustomerMetrics,
   computeInventoryMetrics,
+  computeInventoryValueTrend,
   computeSupplierMetrics,
   computeSalesTimeseries,
   compareSalesPeriods,
   getSalesHeatmapData,
   getRecentTransactions,
 } from './aggregationPipeline'
+import { computeFinanceAnalytics } from './financeAnalyticsService'
+import { computeHrAnalytics } from './hrAnalyticsService'
 
 const SNAPSHOT_TTL_MS: Record<AnalyticsSnapshotType, number> = {
   SALES_HOURLY: 60 * 60 * 1000,
@@ -26,6 +29,37 @@ const SNAPSHOT_TTL_MS: Record<AnalyticsSnapshotType, number> = {
 class AnalyticsRepository {
   private cacheHits = 0
   private cacheMisses = 0
+
+  private async enrichTopProducts(
+    tenantId: string,
+    items: Array<{ productId: string | null; revenue: number; quantity: number }>,
+  ) {
+    const ids = items.map((i) => i.productId).filter(Boolean) as string[]
+    const products = ids.length
+      ? await prisma.product.findMany({
+          where: { tenantId, id: { in: ids } },
+          select: { id: true, name: true },
+        })
+      : []
+    const names = new Map(products.map((p) => [p.id, p.name]))
+    return items.map((i) => ({
+      productId: i.productId ?? '',
+      name: i.productId ? names.get(i.productId) ?? 'Unknown product' : 'Unknown',
+      revenue: i.revenue,
+      quantity: i.quantity,
+    }))
+  }
+
+  private async enrichTopBranches(
+    items: Array<{ branchId: string | null; revenue: number; orders: number }>,
+  ) {
+    return items.map((i) => ({
+      branchId: i.branchId ?? 'direct',
+      name: i.branchId ?? 'Direct / Online',
+      revenue: i.revenue,
+      orders: i.orders,
+    }))
+  }
 
   getCacheStats() {
     const total = this.cacheHits + this.cacheMisses
@@ -115,6 +149,8 @@ class AnalyticsRepository {
         grossMarginPct: comparison.current.totalRevenue
           ? (comparison.current.totalMargin / comparison.current.totalRevenue) * 100
           : 0,
+        revenueChange: comparison.revenueChange,
+        orderChange: comparison.ordersChange,
       },
       comparison: {
         revenueChange: comparison.revenueChange,
@@ -124,8 +160,8 @@ class AnalyticsRepository {
       },
       timeseries,
       heatmap,
-      topProducts: comparison.current.topProducts,
-      topBranches: comparison.current.topBranches,
+      topProducts: await this.enrichTopProducts(tenantId, comparison.current.topProducts),
+      topBranches: await this.enrichTopBranches(comparison.current.topBranches),
     }
 
     if (!params.branchId && !params.productId) {
@@ -148,20 +184,19 @@ class AnalyticsRepository {
         SELECT
           "customerId",
           date_trunc('month', MIN(timestamp)) AS cohort_month
-        FROM customer_events
-        WHERE "tenantId" = ${tenantId} AND type = 'PURCHASE'
+        FROM sales_events
+        WHERE "tenantId" = ${tenantId} AND "customerId" IS NOT NULL
         GROUP BY "customerId"
       ),
       activity AS (
         SELECT
           fp."customerId",
           fp.cohort_month,
-          date_trunc('month', ce.timestamp) AS activity_month
+          date_trunc('month', se.timestamp) AS activity_month
         FROM first_purchase fp
-        INNER JOIN customer_events ce
-          ON ce."customerId" = fp."customerId"
-         AND ce."tenantId" = ${tenantId}
-         AND ce.type = 'PURCHASE'
+        INNER JOIN sales_events se
+          ON se."customerId" = fp."customerId"
+         AND se."tenantId" = ${tenantId}
       )
       SELECT
         to_char(cohort_month, 'YYYY-MM') AS cohort,
@@ -176,18 +211,44 @@ class AnalyticsRepository {
       LIMIT 100
     `
 
-    const atRisk = await prisma.customerEvent.findMany({
-      where: { tenantId, type: 'CHURN' },
-      orderBy: { timestamp: 'desc' },
-      take: 10,
-    })
+    const { getLatestChurnPredictions } = await import('@/lib/ml/models/customerChurnPredictor')
+    const churnPreds = await getLatestChurnPredictions(tenantId, 'high').catch(() => [])
 
-    const customers = atRisk.length
-      ? await prisma.customer.findMany({
-          where: { id: { in: atRisk.map((e) => e.customerId) } },
-          select: { id: true, profile: true, loyaltyData: true },
+    const contactIds = churnPreds.slice(0, 10).map((p) => p.customerId)
+    const contacts = contactIds.length
+      ? await prisma.crmContact.findMany({
+          where: { tenantId, id: { in: contactIds } },
+          select: { id: true, firstName: true, lastName: true, company: true },
         })
       : []
+    const contactNames = new Map(
+      contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim() || c.company || 'Contact']),
+    )
+
+    const segmentRows = await prisma.$queryRaw<Array<{ segment: string; count: bigint }>>`
+      WITH customer_revenue AS (
+        SELECT "customerId", SUM(revenue) AS total
+        FROM sales_events
+        WHERE "tenantId" = ${tenantId}
+        GROUP BY "customerId"
+      )
+      SELECT
+        CASE
+          WHEN total >= 50000 THEN 'Enterprise'
+          WHEN total >= 10000 THEN 'Mid-Market'
+          ELSE 'SMB'
+        END AS segment,
+        COUNT(*) AS count
+      FROM customer_revenue
+      GROUP BY 1
+    `
+
+    const segmentTotal = segmentRows.reduce((s, r) => s + Number(r.count), 0) || 1
+    const segmentColors: Record<string, string> = {
+      Enterprise: '#4f46e5',
+      'Mid-Market': '#06b6d4',
+      SMB: '#f59e0b',
+    }
 
     const result = {
       period: range.label,
@@ -198,23 +259,25 @@ class AnalyticsRepository {
         retained: Number(r.retained),
       })),
       funnel: {
-        visitors: metrics.newCustomers * 4,
-        leads: metrics.newCustomers * 2,
+        visitors: metrics.newCustomers + metrics.returningCustomers,
+        leads: metrics.newCustomers,
         customers: metrics.newCustomers + metrics.returningCustomers,
         repeat: metrics.returningCustomers,
       },
-      churnRisk: customers.map((c, i) => ({
-        customerId: c.id,
-        name: (c.profile as Record<string, unknown>).name ?? 'Customer',
-        churnScore: 0.65 + i * 0.05,
-        predictedChurnDate: new Date(Date.now() + (30 - i * 5) * 86400000).toISOString().slice(0, 10),
-        ltvAtRisk: ((c.loyaltyData as Record<string, unknown>).points as number ?? 1000) / 10,
+      churnRisk: churnPreds.slice(0, 10).map((c) => ({
+        customerId: c.customerId,
+        name: contactNames.get(c.customerId) ?? c.customerName,
+        churnScore: c.churnProbability,
+        predictedChurnDate: c.daysToChurn
+          ? new Date(Date.now() + c.daysToChurn * 86400000).toISOString().slice(0, 10)
+          : '',
+        ltvAtRisk: c.ltvAtRisk,
       })),
-      segments: [
-        { name: 'Enterprise', value: 35, color: '#4f46e5' },
-        { name: 'Mid-Market', value: 40, color: '#06b6d4' },
-        { name: 'SMB', value: 25, color: '#f59e0b' },
-      ],
+      segments: segmentRows.map((s) => ({
+        name: s.segment,
+        value: Math.round((Number(s.count) / segmentTotal) * 100),
+        color: segmentColors[s.segment] ?? '#94a3b8',
+      })),
     }
 
     await this.saveSnapshot(tenantId, 'CUSTOMER_DAILY', key, result)
@@ -225,11 +288,24 @@ class AnalyticsRepository {
     const cached = await this.getSnapshot<Record<string, unknown>>(tenantId, 'INVENTORY_HOURLY', 'latest')
     if (cached) return { ...cached, cache: { hit: true, ...this.getCacheStats() } }
 
-    const metrics = await computeInventoryMetrics(tenantId)
-    const result = { metrics, computedAt: new Date().toISOString() }
+    const [metrics, valueTrend] = await Promise.all([
+      computeInventoryMetrics(tenantId),
+      computeInventoryValueTrend(tenantId),
+    ])
+    const result = { metrics, valueTrend, computedAt: new Date().toISOString() }
 
     await this.saveSnapshot(tenantId, 'INVENTORY_HOURLY', 'latest', result)
     return { ...result, cache: { hit: false, ...this.getCacheStats() } }
+  }
+
+  async getFinanceAnalytics(tenantId: string, period: string, startDate?: string, endDate?: string) {
+    const range = resolveDateRange(period as never, startDate, endDate)
+    return computeFinanceAnalytics(tenantId, range)
+  }
+
+  async getHrAnalytics(tenantId: string, period: string, startDate?: string, endDate?: string) {
+    const range = resolveDateRange(period as never, startDate, endDate)
+    return computeHrAnalytics(tenantId, range)
   }
 
   async getSupplierAnalytics(tenantId: string, period: string, startDate?: string, endDate?: string) {
@@ -275,14 +351,18 @@ class AnalyticsRepository {
     const cached = await this.getSnapshot<Record<string, unknown>>(tenantId, 'EXECUTIVE_DAILY', key)
     if (cached) return { ...cached, cache: { hit: true, ...this.getCacheStats() } }
 
-    const [sales, customers, inventory, suppliers, transactions, comparison] = await Promise.all([
+    const [sales, customers, inventory, suppliers, transactions, comparison, finance, hr] = await Promise.all([
       computeSalesMetrics(tenantId, range),
       computeCustomerMetrics(tenantId, range),
       computeInventoryMetrics(tenantId),
       computeSupplierMetrics(tenantId, range),
       getRecentTransactions(tenantId, 10),
       compareSalesPeriods(tenantId, range),
+      computeFinanceAnalytics(tenantId, range),
+      computeHrAnalytics(tenantId, range),
     ])
+
+    const topProducts = await this.enrichTopProducts(tenantId, sales.topProducts)
 
     const grossMarginPct = sales.totalRevenue ? (sales.totalMargin / sales.totalRevenue) * 100 : 0
 
@@ -300,7 +380,9 @@ class AnalyticsRepository {
     const timeseries = fillDailyTimeseriesGaps(range, rawTimeseries, (date) => ({
       date,
       revenue: 0,
+      orderCount: 0,
       orders: 0,
+      avgOrderValue: 0,
       margin: 0,
       marginPct: 0,
       previousRevenue: null,
@@ -309,18 +391,27 @@ class AnalyticsRepository {
     const result = {
       period: range.label,
       scorecard,
-      modules: { sales, customers, inventory, suppliers },
+      modules: {
+        sales: { ...sales, topProducts, topBranches: await this.enrichTopBranches(sales.topBranches) },
+        customers,
+        inventory,
+        suppliers,
+        finance,
+        hr,
+      },
       insight: { summary: '', generatedAt: new Date().toISOString() },
       revenueChart: timeseries.map((t) => ({
         date: t.date.slice(5, 10),
         revenue: t.revenue,
+        orderCount: t.orderCount ?? t.orders ?? 0,
+        avgOrderValue: t.avgOrderValue ?? 0,
         marginPct: t.marginPct,
-        isToday: false,
+        isToday: t.date === new Date().toISOString().slice(0, 10),
       })),
       transactions,
       funnel: {
-        visitors: customers.newCustomers * 4,
-        leads: customers.newCustomers * 2,
+        visitors: customers.newCustomers + customers.returningCustomers,
+        leads: customers.newCustomers,
         customers: customers.newCustomers + customers.returningCustomers,
         repeat: customers.returningCustomers,
       },

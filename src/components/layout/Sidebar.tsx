@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, LogOut, Zap } from 'lucide-react'
 import { Avatar, Tooltip } from '@/components/ui'
@@ -16,6 +17,8 @@ import {
 import { useTenantBranding } from '@/components/branding/TenantBrandingProvider'
 import { useSessionStore } from '@/store/sessionStore'
 import { formatUserRole } from '@/lib/auth/displayUser'
+import { signOutUser } from '@/lib/auth/signOut'
+import { useReorderSuggestionCount } from '@/hooks/useReorderSuggestionCount'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SAIOS Sidebar
@@ -26,6 +29,7 @@ export function Sidebar({ className }: { className?: string }) {
   const isTablet = useIsTablet()
   const isDesktop = useIsDesktop()
   const effectiveCollapsed = isTablet || collapsed
+  const reorderCount = useReorderSuggestionCount()
 
   return (
     <aside
@@ -40,7 +44,7 @@ export function Sidebar({ className }: { className?: string }) {
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-area">
         {navSections.map((section) => (
-          <SidebarSection key={section.label} section={section} collapsed={effectiveCollapsed} />
+          <SidebarSection key={section.label} section={section} collapsed={effectiveCollapsed} reorderCount={reorderCount} />
         ))}
       </nav>
 
@@ -82,11 +86,13 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
       )}
     >
       {branding.logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={branding.logoUrl}
           alt=""
+          width={28}
+          height={28}
           className="h-7 w-7 shrink-0 rounded-lg object-cover"
+          unoptimized
         />
       ) : (
         <div
@@ -116,9 +122,11 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
 function SidebarSection({
   section,
   collapsed,
+  reorderCount,
 }: {
   section: NavSection
   collapsed: boolean
+  reorderCount: number
 }) {
   return (
     <div className="mb-1">
@@ -129,9 +137,17 @@ function SidebarSection({
       )}
       {collapsed && <div className="my-1 mx-2 h-px bg-slate-800/60" />}
       <ul role="list" className="space-y-0.5 px-2">
-        {section.items.map((item) => (
-          <SidebarNavItem key={item.href} item={item} collapsed={collapsed} />
-        ))}
+        {section.items.map((item) => {
+          const withBadge =
+            item.href === '/inventory/reorder' && reorderCount > 0
+              ? {
+                  ...item,
+                  badge: reorderCount > 99 ? '99+' : reorderCount,
+                  badgeVariant: 'danger' as const,
+                }
+              : item
+          return <SidebarNavItem key={item.href} item={withBadge} collapsed={collapsed} />
+        })}
       </ul>
     </div>
   )
@@ -148,7 +164,7 @@ function SidebarNavItem({
 }) {
   const pathname = usePathname()
   const active = isNavItemActive(item.href, pathname)
-  const { icon: Icon, label, badge, placeholder } = item
+  const { icon: Icon, label, badge, badgeVariant, placeholder } = item
 
   const itemContent = (
     <span
@@ -175,7 +191,11 @@ function SidebarNavItem({
             <span
               className={cn(
                 'ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold',
-                active ? 'bg-[color-mix(in_srgb,var(--color-brand)_30%,transparent)] text-[var(--color-brand-hover)]' : 'bg-slate-700 text-slate-300',
+                badgeVariant === 'danger'
+                  ? 'bg-red-600 text-white'
+                  : active
+                    ? 'bg-[color-mix(in_srgb,var(--color-brand)_30%,transparent)] text-[var(--color-brand-hover)]'
+                    : 'bg-slate-700 text-slate-300',
               )}
             >
               {badge}
@@ -231,8 +251,7 @@ function SidebarUser({ collapsed }: { collapsed: boolean }) {
   const roleLabel = formatUserRole(user?.role)
 
   const handleLogout = () => {
-    // TODO: call auth signOut + redirect to /login
-    router.push('/login')
+    void signOutUser(router)
   }
 
   return (

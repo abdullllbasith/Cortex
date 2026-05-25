@@ -2,27 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createSupabaseServerClient } from '@/lib/auth/supabaseServer'
 import { findUserBySupabaseId, issueSession } from '@/lib/auth/sessionService'
-import { REFRESH_COOKIE } from '@/lib/auth/jwt'
 import { extractRequestMeta } from '@/lib/audit/auditLogger'
 import { recordLoginSuccess, recordLoginFailed } from '@/lib/audit/securityMonitor'
 import { applyRateLimit } from '@/lib/security/rateLimiter'
 import { prisma } from '@/lib/db/prisma'
+import {
+  setRefreshCookie,
+  setMfaPendingCookie,
+} from '@/lib/auth/sessionCookies'
 
 const bodySchema = z.object({
   email: z.string().email().optional(),
   password: z.string().optional(),
   supabaseAccessToken: z.string().optional(),
+  rememberMe: z.boolean().optional().default(true),
 })
-
-function setRefreshCookie(response: NextResponse, token: string) {
-  response.cookies.set(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 30 * 24 * 60 * 60,
-  })
-}
 
 export async function POST(request: NextRequest) {
   const blocked = await applyRateLimit(request, 'auth')
@@ -64,7 +58,7 @@ export async function POST(request: NextRequest) {
       if (!devUser) {
         return NextResponse.json({ success: false, error: { message: 'No dev user — run db:seed' } }, { status: 500 })
       }
-      const session = await issueSession(devUser.id, meta)
+      const session = await issueSession(devUser.id, meta, { rememberMe: body.rememberMe })
       const response = NextResponse.json({
         success: true,
         data: {
@@ -75,7 +69,7 @@ export async function POST(request: NextRequest) {
           mfaRequired: false,
         },
       })
-      setRefreshCookie(response, session.refreshToken)
+      setRefreshCookie(response, session.refreshToken, body.rememberMe)
       return response
     } else {
       return NextResponse.json({ success: false, error: { message: 'Missing credentials' } }, { status: 400 })
@@ -87,7 +81,10 @@ export async function POST(request: NextRequest) {
     }
 
     const mfaRequired = user.mfaEnabled
-    const session = await issueSession(user.id, meta, { mfaPending: mfaRequired })
+    const session = await issueSession(user.id, meta, {
+      mfaPending: mfaRequired,
+      rememberMe: body.rememberMe,
+    })
 
     const response = NextResponse.json({
       success: true,
@@ -105,14 +102,19 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    if (!mfaRequired) {
-      setRefreshCookie(response, session.refreshToken)
+    if (mfaRequired) {
+      setMfaPendingCookie(response)
+    } else {
+      setRefreshCookie(response, session.refreshToken, body.rememberMe)
       await recordLoginSuccess(user.tenantId, user.id, meta.ipAddress)
     }
 
     return response
   } catch (err) {
     console.error('[auth/session]', err)
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ success: false, error: { message: 'Invalid request body' } }, { status: 400 })
+    }
     return NextResponse.json({ success: false, error: { message: 'Session bootstrap failed' } }, { status: 500 })
   }
 }

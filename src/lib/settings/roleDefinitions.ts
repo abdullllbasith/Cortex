@@ -90,7 +90,7 @@ Invited by: ${opts.inviterName}
 
 Accept invitation: ${opts.inviteUrl}
 
-This link expires in 7 days.
+This link expires in 48 hours.
 
 — SAIOS`
 }

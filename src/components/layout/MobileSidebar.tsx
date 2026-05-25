@@ -10,6 +10,7 @@ import { useSidebar } from '@/lib/sidebar-context'
 import { navSections, isNavItemActive, type NavItem } from './nav-config'
 import { useSessionStore } from '@/store/sessionStore'
 import { formatUserRole } from '@/lib/auth/displayUser'
+import { useReorderSuggestionCount } from '@/hooks/useReorderSuggestionCount'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MobileSidebar — full-screen overlay drawer for screens < md
@@ -21,6 +22,7 @@ export function MobileSidebar() {
   const user = useSessionStore((s) => s.user)
   const displayName = user?.name ?? 'User'
   const roleLabel = formatUserRole(user?.role)
+  const reorderCount = useReorderSuggestionCount()
 
   return (
     <DialogPrimitive.Root open={mobileOpen} onOpenChange={(o) => !o && closeMobile()}>
@@ -74,14 +76,24 @@ export function MobileSidebar() {
                   {section.label}
                 </p>
                 <ul role="list" className="space-y-0.5 px-2">
-                  {section.items.map((item) => (
-                    <MobileNavItem
-                      key={item.href}
-                      item={item}
-                      pathname={pathname}
-                      onSelect={closeMobile}
-                    />
-                  ))}
+                  {section.items.map((item) => {
+                    const withBadge =
+                      item.href === '/inventory/reorder' && reorderCount > 0
+                        ? {
+                            ...item,
+                            badge: reorderCount > 99 ? '99+' : reorderCount,
+                            badgeVariant: 'danger' as const,
+                          }
+                        : item
+                    return (
+                      <MobileNavItem
+                        key={item.href}
+                        item={withBadge}
+                        pathname={pathname}
+                        onSelect={closeMobile}
+                      />
+                    )
+                  })}
                 </ul>
               </div>
             ))}
@@ -113,7 +125,7 @@ function MobileNavItem({
   onSelect: () => void
 }) {
   const active = isNavItemActive(item.href, pathname)
-  const { icon: Icon, label, badge, placeholder } = item
+  const { icon: Icon, label, badge, badgeVariant, placeholder } = item
 
   const content = (
     <span
@@ -132,7 +144,12 @@ function MobileNavItem({
       />
       <span className="flex-1 truncate text-sm font-medium">{label}</span>
       {badge != null && (
-        <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-slate-700 px-1 text-[10px] font-semibold text-slate-300">
+        <span
+          className={cn(
+            'ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold',
+            badgeVariant === 'danger' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300',
+          )}
+        >
           {badge}
         </span>
       )}

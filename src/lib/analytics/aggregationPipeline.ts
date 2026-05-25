@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import type { DateRange } from './periodUtils'
 import { percentChange, trendDirection } from './periodUtils'
+import { querySalesTimeseries } from './salesDataService'
 
 export interface SalesMetrics {
   totalRevenue: number
@@ -20,6 +21,13 @@ export interface CustomerMetrics {
 }
 
 export interface InventoryMetrics {
+  summary: {
+    totalSKUs: number
+    totalValue: number
+    lowStockCount: number
+    outOfStockCount: number
+    itemsOnOrder: number
+  }
   fastMovers: Array<{ productId: string; name: string; turnoverRate: number }>
   deadStock: Array<{ productId: string; name: string; inventoryLevel: number; daysIdle: number }>
   reorderRequired: Array<{ productId: string; name: string; inventoryLevel: number; reorderPoint: number }>
@@ -111,143 +119,248 @@ export async function computeSalesTimeseries(
   branchId?: string,
   productId?: string,
 ) {
-  const trunc = granularity === 'hour' ? 'hour' : granularity === 'week' ? 'week' : granularity === 'month' ? 'month' : 'day'
-
-  const events = await prisma.salesEvent.findMany({
-    where: {
-      tenantId,
-      timestamp: { gte: range.start, lte: range.end },
-      ...(branchId ? { branchId } : {}),
-      ...(productId ? { productId } : {}),
-    },
-    select: { timestamp: true, revenue: true, margin: true },
-    orderBy: { timestamp: 'asc' },
-  })
-
-  const buckets = new Map<string, { revenue: number; orders: number; margin: number }>()
-  for (const e of events) {
-    const key = truncateBucket(e.timestamp, trunc)
-    const b = buckets.get(key) ?? { revenue: 0, orders: 0, margin: 0 }
-    b.revenue += e.revenue
-    b.margin += e.margin
-    b.orders += 1
-    buckets.set(key, b)
-  }
-
-  const sorted = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b))
+  const points = await querySalesTimeseries(tenantId, range, granularity, branchId, productId)
   let prevRevenue: number | null = null
-
-  return sorted.map(([date, b]) => {
+  return points.map((p) => {
     const row = {
-      date,
-      revenue: b.revenue,
-      orders: b.orders,
-      margin: b.margin,
-      marginPct: b.revenue ? (b.margin / b.revenue) * 100 : 0,
+      date: p.date,
+      revenue: p.revenue,
+      orderCount: p.orderCount,
+      orders: p.orderCount,
+      avgOrderValue: p.avgOrderValue,
+      margin: p.margin,
+      marginPct: p.marginPct,
       previousRevenue: prevRevenue,
     }
-    prevRevenue = b.revenue
+    prevRevenue = p.revenue
     return row
   })
 }
-
-function truncateBucket(date: Date, trunc: string): string {
-  const d = new Date(date)
-  if (trunc === 'hour') return d.toISOString().slice(0, 13) + ':00:00.000Z'
-  if (trunc === 'day') return d.toISOString().slice(0, 10)
-  if (trunc === 'week') {
-    const day = d.getUTCDay()
-    d.setUTCDate(d.getUTCDate() - day)
-    return d.toISOString().slice(0, 10)
-  }
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
 export async function computeCustomerMetrics(tenantId: string, range: DateRange): Promise<CustomerMetrics> {
-  const purchases = await prisma.customerEvent.groupBy({
-    by: ['customerId'],
-    where: {
-      tenantId,
-      type: 'PURCHASE',
-      timestamp: { gte: range.start, lte: range.end },
-    },
-    _count: { customerId: true },
-  })
+  const [counts, revenueRows] = await Promise.all([
+    prisma.$queryRaw<Array<{
+      new_customers: bigint
+      returning_customers: bigint
+      unique_buyers: bigint
+    }>>`
+      WITH period_buyers AS (
+        SELECT DISTINCT "customerId"
+        FROM sales_events
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" IS NOT NULL
+          AND timestamp >= ${range.start}
+          AND timestamp <= ${range.end}
+      ),
+      returning_buyers AS (
+        SELECT COUNT(DISTINCT pb."customerId") AS cnt
+        FROM period_buyers pb
+        WHERE EXISTS (
+          SELECT 1 FROM sales_events se
+          WHERE se."tenantId" = ${tenantId}
+            AND se."customerId" = pb."customerId"
+            AND se.timestamp < ${range.start}
+        )
+      ),
+      new_cust AS (
+        SELECT COUNT(DISTINCT pb."customerId") AS cnt
+        FROM period_buyers pb
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sales_events se
+          WHERE se."tenantId" = ${tenantId}
+            AND se."customerId" = pb."customerId"
+            AND se.timestamp < ${range.start}
+        )
+      )
+      SELECT
+        (SELECT cnt FROM new_cust) AS new_customers,
+        (SELECT cnt FROM returning_buyers) AS returning_customers,
+        (SELECT COUNT(*) FROM period_buyers) AS unique_buyers
+    `,
+    prisma.$queryRaw<Array<{ ltv: number }>>`
+      SELECT COALESCE(AVG(sub.total), 0)::float AS ltv
+      FROM (
+        SELECT "customerId", SUM(revenue) AS total
+        FROM sales_events
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" IS NOT NULL
+        GROUP BY "customerId"
+      ) sub
+    `,
+  ])
 
-  const churns = await prisma.customerEvent.count({
-    where: { tenantId, type: 'CHURN', timestamp: { gte: range.start, lte: range.end } },
-  })
+  const row = counts[0] ?? {
+    new_customers: BigInt(0),
+    returning_customers: BigInt(0),
+    unique_buyers: BigInt(0),
+  }
 
-  const newCustomers = await prisma.customerEvent.groupBy({
-    by: ['customerId'],
-    where: {
-      tenantId,
-      type: 'PURCHASE',
-      timestamp: { gte: range.start, lte: range.end },
-    },
-  })
+  const uniqueBuyers = Number(row.unique_buyers)
+  const returning = Number(row.returning_customers)
+  const newCustomers = Number(row.new_customers)
 
-  const allCustomers = await prisma.customer.count({ where: { tenantId } })
-  const returning = purchases.filter((p) => p._count.customerId > 1).length
-  const uniqueBuyers = purchases.length
-
-  const revenueRows = await prisma.$queryRaw<Array<{ ltv: number }>>`
-    SELECT COALESCE(AVG(sub.total), 0)::float AS ltv
-    FROM (
-      SELECT "customerId", SUM(revenue) AS total
+  const atRiskCount = await prisma.$queryRaw<Array<{ cnt: bigint }>>`
+    WITH last_purchase AS (
+      SELECT "customerId", MAX(timestamp) AS last_ts
       FROM sales_events
-      WHERE "tenantId" = ${tenantId}
+      WHERE "tenantId" = ${tenantId} AND "customerId" IS NOT NULL
       GROUP BY "customerId"
-    ) sub
+    )
+    SELECT COUNT(*) AS cnt
+    FROM last_purchase
+    WHERE last_ts < NOW() - INTERVAL '90 days'
   `
+  const churnCandidates = Number(atRiskCount[0]?.cnt ?? 0)
+  const totalBuyers = await prisma.$queryRaw<Array<{ cnt: bigint }>>`
+    SELECT COUNT(DISTINCT "customerId") AS cnt
+    FROM sales_events
+    WHERE "tenantId" = ${tenantId} AND "customerId" IS NOT NULL
+  `
+  const total = Number(totalBuyers[0]?.cnt ?? 0)
 
   return {
     retentionRate: uniqueBuyers ? Math.round((returning / uniqueBuyers) * 1000) / 10 : 0,
-    churnRate: allCustomers ? Math.round((churns / allCustomers) * 1000) / 10 : 0,
+    churnRate: total ? Math.round((churnCandidates / total) * 1000) / 10 : 0,
     avgLifetimeValue: revenueRows[0]?.ltv ?? 0,
-    newCustomers: newCustomers.length,
+    newCustomers,
     returningCustomers: returning,
   }
 }
 
 export async function computeInventoryMetrics(tenantId: string): Promise<InventoryMetrics> {
-  const products = await prisma.product.findMany({
-    where: { tenantId },
-    select: { id: true, name: true, inventoryLevel: true, updatedAt: true },
-  })
+  const [products, balances, salesByProduct, sales90dByProduct, lastSaleByProduct] = await Promise.all([
+    prisma.product.findMany({
+      where: { tenantId, isActive: true, trackInventory: true },
+      select: { id: true, name: true, reorderPoint: true, costPrice: true, updatedAt: true },
+    }),
+    prisma.stockBalance.findMany({
+      where: { tenantId },
+      select: {
+        productId: true,
+        quantityOnHand: true,
+        quantityOnOrder: true,
+      },
+    }),
+    prisma.$queryRaw<Array<{ product_id: string; sold: number }>>`
+      SELECT "productId" AS product_id,
+             COALESCE(SUM(ABS(quantity)), 0)::float AS sold
+      FROM stock_ledger
+      WHERE "tenantId" = ${tenantId}
+        AND "transactionType" = 'SALE'
+        AND "createdAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY "productId"
+    `,
+    prisma.$queryRaw<Array<{ product_id: string; sold: number }>>`
+      SELECT "productId" AS product_id,
+             COALESCE(SUM(ABS(quantity)), 0)::float AS sold
+      FROM stock_ledger
+      WHERE "tenantId" = ${tenantId}
+        AND "transactionType" = 'SALE'
+        AND "createdAt" >= NOW() - INTERVAL '90 days'
+      GROUP BY "productId"
+    `,
+    prisma.$queryRaw<Array<{ product_id: string; last_sale: Date | null }>>`
+      SELECT "productId" AS product_id, MAX("createdAt") AS last_sale
+      FROM stock_ledger
+      WHERE "tenantId" = ${tenantId}
+        AND "transactionType" = 'SALE'
+      GROUP BY "productId"
+    `,
+  ])
 
-  const salesByProduct = await prisma.$queryRaw<Array<{ product_id: string; sold: bigint }>>`
-    SELECT "productId" AS product_id, SUM(quantity) AS sold
-    FROM inventory_events
-    WHERE "tenantId" = ${tenantId} AND type = 'SALE'
-      AND timestamp >= NOW() - INTERVAL '30 days'
-    GROUP BY "productId"
-  `
+  const onHandMap = new Map<string, number>()
+  const onOrderMap = new Map<string, number>()
+  let totalValue = 0
+  for (const b of balances) {
+    const onHand = Number(b.quantityOnHand ?? 0)
+    onHandMap.set(b.productId, (onHandMap.get(b.productId) ?? 0) + onHand)
+    onOrderMap.set(b.productId, (onOrderMap.get(b.productId) ?? 0) + Number(b.quantityOnOrder ?? 0))
+  }
+  const costMap = new Map(products.map((p) => [p.id, Number(p.costPrice ?? 0)]))
+  for (const [productId, onHand] of onHandMap) {
+    totalValue += onHand * (costMap.get(productId) ?? 0)
+  }
 
-  const salesMap = new Map(salesByProduct.map((s) => [s.product_id, Number(s.sold)]))
+  const salesMap = new Map(salesByProduct.map((s) => [s.product_id, s.sold]))
+  const sales90Map = new Map(sales90dByProduct.map((s) => [s.product_id, s.sold]))
+  const lastSaleMap = new Map(lastSaleByProduct.map((s) => [s.product_id, s.last_sale]))
 
-  const withTurnover = products.map((p) => {
+  const withMetrics = products.map((p) => {
+    const onHand = onHandMap.get(p.id) ?? 0
     const sold = salesMap.get(p.id) ?? 0
-    const turnoverRate = p.inventoryLevel > 0 ? sold / p.inventoryLevel : sold
-    const daysIdle = Math.floor((Date.now() - p.updatedAt.getTime()) / 86400000)
-    return { ...p, turnoverRate, daysIdle, sold }
+    const reorderPoint = Number(p.reorderPoint)
+    const lastSale = lastSaleMap.get(p.id)
+    const daysIdle = lastSale
+      ? Math.floor((Date.now() - new Date(lastSale).getTime()) / 86400000)
+      : Math.floor((Date.now() - p.updatedAt.getTime()) / 86400000)
+    const turnoverRate = onHand > 0 ? sold / onHand : sold
+    return { ...p, onHand, sold, reorderPoint, daysIdle, turnoverRate }
   })
+
+  let lowStockCount = 0
+  let outOfStockCount = 0
+  let itemsOnOrder = 0
+  for (const p of withMetrics) {
+    if (p.onHand <= 0) outOfStockCount++
+    else if (p.reorderPoint > 0 && p.onHand <= p.reorderPoint) lowStockCount++
+    itemsOnOrder += onOrderMap.get(p.id) ?? 0
+  }
 
   return {
-    fastMovers: withTurnover
+    summary: {
+      totalSKUs: products.length,
+      totalValue: Math.round(totalValue * 100) / 100,
+      lowStockCount,
+      outOfStockCount,
+      itemsOnOrder: Math.round(itemsOnOrder),
+    },
+    fastMovers: withMetrics
+      .filter((p) => p.sold > 0)
       .sort((a, b) => b.turnoverRate - a.turnoverRate)
       .slice(0, 10)
       .map((p) => ({ productId: p.id, name: p.name, turnoverRate: Math.round(p.turnoverRate * 100) / 100 })),
-    deadStock: withTurnover
-      .filter((p) => p.sold === 0 && p.inventoryLevel > 0)
-      .map((p) => ({ productId: p.id, name: p.name, inventoryLevel: p.inventoryLevel, daysIdle: p.daysIdle })),
-    reorderRequired: withTurnover
-      .filter((p) => p.inventoryLevel < 25)
-      .map((p) => ({ productId: p.id, name: p.name, inventoryLevel: p.inventoryLevel, reorderPoint: 25 })),
+    deadStock: withMetrics
+      .filter((p) => p.onHand > 0 && (sales90Map.get(p.id) ?? 0) === 0)
+      .sort((a, b) => b.daysIdle - a.daysIdle)
+      .slice(0, 20)
+      .map((p) => ({ productId: p.id, name: p.name, inventoryLevel: p.onHand, daysIdle: p.daysIdle })),
+    reorderRequired: withMetrics
+      .filter((p) => p.reorderPoint > 0 && p.onHand <= p.reorderPoint)
+      .sort((a, b) => a.onHand - b.onHand)
+      .map((p) => ({
+        productId: p.id,
+        name: p.name,
+        inventoryLevel: p.onHand,
+        reorderPoint: p.reorderPoint,
+      })),
     stockTurnoverRate:
-      withTurnover.length
-        ? withTurnover.reduce((s, p) => s + p.turnoverRate, 0) / withTurnover.length
+      withMetrics.length
+        ? withMetrics.reduce((s, p) => s + p.turnoverRate, 0) / withMetrics.length
         : 0,
+  }
+}
+
+export async function computeInventoryValueTrend(tenantId: string) {
+  const rows = await prisma.$queryRaw<Array<{ month: string; value: number }>>`
+    SELECT to_char(date_trunc('month', sl."createdAt"), 'YYYY-MM') AS month,
+           COALESCE(SUM(ABS(sl.quantity) * sl."unitCost"), 0)::float AS value
+    FROM stock_ledger sl
+    WHERE sl."tenantId" = ${tenantId}
+      AND sl."transactionType" IN ('PURCHASE', 'SALE', 'ADJUSTMENT')
+      AND sl."createdAt" >= NOW() - INTERVAL '12 months'
+    GROUP BY 1
+    ORDER BY 1
+  `
+
+  const currentValue = await prisma.$queryRaw<Array<{ value: number }>>`
+    SELECT COALESCE(SUM(sb."quantityOnHand" * p."costPrice"), 0)::float AS value
+    FROM stock_balances sb
+    INNER JOIN products p ON p.id = sb."productId"
+    WHERE sb."tenantId" = ${tenantId}
+  `
+
+  return {
+    currentInventoryValue: Math.round((currentValue[0]?.value ?? 0) * 100) / 100,
+    trend: rows.map((r) => ({ month: r.month, movementValue: Math.round(r.value * 100) / 100 })),
   }
 }
 
@@ -340,22 +453,38 @@ export async function getRecentTransactions(tenantId: string, limit = 10) {
   })
 
   const customerIds = [...new Set(events.map((e) => e.customerId).filter(Boolean))] as string[]
-  const customers = customerIds.length
-    ? await prisma.customer.findMany({
-        where: { id: { in: customerIds } },
-        select: { id: true, profile: true },
-      })
-    : []
+  const productIds = [...new Set(events.map((e) => e.productId).filter(Boolean))] as string[]
+  const [contacts, products] = await Promise.all([
+    customerIds.length
+      ? prisma.crmContact.findMany({
+          where: { tenantId, id: { in: customerIds } },
+          select: { id: true, firstName: true, lastName: true, company: true },
+        })
+      : [],
+    productIds.length
+      ? prisma.product.findMany({
+          where: { tenantId, id: { in: productIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+  ])
 
-  const customerMap = new Map(customers.map((c) => [c.id, (c.profile as Record<string, unknown>).name ?? 'Customer']))
+  const customerMap = new Map(
+    contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim() || c.company || 'Contact']),
+  )
+  const productMap = new Map(products.map((p) => [p.id, p.name]))
 
   return events.map((e) => ({
     id: e.id,
+    productId: e.productId,
+    productName: e.productId ? (productMap.get(e.productId) ?? e.productId) : undefined,
     customer: e.customerId ? customerMap.get(e.customerId) ?? 'Unknown' : 'Walk-in',
     amount: e.revenue,
+    revenue: e.revenue,
     margin: e.margin,
     status: 'paid',
     time: e.timestamp.toISOString(),
+    timestamp: e.timestamp.toISOString(),
     items: e.quantity,
     channel: e.channel,
   }))

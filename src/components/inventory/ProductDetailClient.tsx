@@ -24,6 +24,8 @@ import {
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
 import { swrFetcher } from '@/lib/api/apiClient'
+import { ProductVariantsTab } from '@/components/inventory/ProductVariantsTab'
+import { BarcodeField } from '@/components/inventory/BarcodeField'
 import { StockBadge, type StockHealth } from '@/components/inventory/StockBadge'
 import { StockLevelBar } from '@/components/inventory/StockLevelBar'
 
@@ -67,7 +69,7 @@ interface ProductDetail {
     grossMargin: { grossMargin: number; grossMarginPercent: number; revenue: number; cogs: number }
     abcClass: 'A' | 'B' | 'C'
     revenueProxy: number
-  }
+  } | null
 }
 
 interface LedgerEntry {
@@ -90,8 +92,13 @@ export function ProductDetailClient({ productId }: { productId: string }) {
   const [ledgerType, setLedgerType] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const { data: product, mutate, isLoading } = useSWR<ProductDetail>(
+  const { data: product, mutate, isLoading, error } = useSWR<ProductDetail>(
     `/inventory/products/${productId}`,
+    swrFetcher,
+  )
+
+  const { data: analytics, isLoading: analyticsLoading } = useSWR<ProductDetail['analytics']>(
+    tab === 'analytics' ? `/inventory/products/${productId}?tab=analytics` : null,
     swrFetcher,
   )
 
@@ -105,18 +112,30 @@ export function ProductDetailClient({ productId }: { productId: string }) {
   )
   const ledgerEntries = Array.isArray(ledgerPage) ? ledgerPage : (ledgerPage?.data ?? [])
 
-  const p = product
-    ? ({
-        ...product,
-        ...form,
-        imageUrls: form.imageUrls ?? product.imageUrls ?? [],
-        stockByWarehouse: product.stockByWarehouse ?? [],
-        variants: product.variants ?? [],
-        stockTrend: product.stockTrend ?? [],
-      } as ProductDetail)
-    : undefined
+  if (isLoading) {
+    return <div className="p-6 text-slate-500">Loading product…</div>
+  }
 
-  const imageUrls = p?.imageUrls?.length ? p.imageUrls : ['']
+  if (error || !product) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-slate-600">Product not found or failed to load.</p>
+        <Link href="/inventory/products">
+          <Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" />Back to products</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  const p = {
+    ...product,
+    ...form,
+    imageUrls: form.imageUrls ?? product.imageUrls ?? [],
+    stockByWarehouse: product.stockByWarehouse ?? [],
+    variants: product.variants ?? [],
+    stockTrend: product.stockTrend ?? [],
+    analytics: analytics ?? product.analytics,
+  } as ProductDetail
 
   const save = async () => {
     if (!p) return
@@ -157,9 +176,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     { id: 'notes', header: 'Notes', accessorKey: 'notes' },
   ]
 
-  if (isLoading || !p) {
-    return <div className="p-6 text-slate-500">Loading product…</div>
-  }
+  const imageUrls = p.imageUrls?.length ? p.imageUrls : ['']
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -255,19 +272,28 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                   ] as const
                 ).map(([key, label]) => (
                   <div key={key}>
-                    <label className="text-xs text-slate-500 mb-1 block">{label}</label>
-                    <Input
-                      defaultValue={String((p as Record<string, unknown>)[key] ?? '')}
-                      onChange={(e) => {
-                        const val =
-                          key.includes('Price') || key === 'taxRate'
-                            ? Number(e.target.value)
-                            : key === 'leadTimeDays'
-                              ? Number(e.target.value)
-                              : e.target.value
-                        setForm((f) => ({ ...f, [key]: val }))
-                      }}
-                    />
+                    {key === 'barcode' ? (
+                      <BarcodeField
+                        value={String((p as Record<string, unknown>).barcode ?? '')}
+                        onChange={(barcode) => setForm((f) => ({ ...f, barcode }))}
+                      />
+                    ) : (
+                      <>
+                        <label className="text-xs text-slate-500 mb-1 block">{label}</label>
+                        <Input
+                          defaultValue={String((p as Record<string, unknown>)[key] ?? '')}
+                          onChange={(e) => {
+                            const val =
+                              key.includes('Price') || key === 'taxRate'
+                                ? Number(e.target.value)
+                                : key === 'leadTimeDays'
+                                  ? Number(e.target.value)
+                                  : e.target.value
+                            setForm((f) => ({ ...f, [key]: val }))
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
                 ))}
                 <div className="md:col-span-2">
@@ -354,35 +380,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         )}
 
         {tab === 'variants' && (
-          <Card>
-            <CardBody className="p-0 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-900/50">
-                  <tr>
-                    <th className="text-left p-3">Variant</th>
-                    <th className="text-left p-3">SKU</th>
-                    <th className="text-right p-3">On Hand</th>
-                    <th className="text-right p-3">Cost</th>
-                    <th className="text-right p-3">Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {p.variants.length === 0 && (
-                    <tr><td colSpan={5} className="p-6 text-center text-slate-500">No variants</td></tr>
-                  )}
-                  {p.variants.map((v) => (
-                    <tr key={v.id} className="border-t">
-                      <td className="p-3">{v.name}</td>
-                      <td className="p-3">{v.sku}</td>
-                      <td className="p-3 text-right tabular-nums">{v.onHand}</td>
-                      <td className="p-3 text-right">{v.costPrice ?? '—'}</td>
-                      <td className="p-3 text-right">{v.sellingPrice ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardBody>
-          </Card>
+          <ProductVariantsTab productId={productId} productSku={p.sku} />
         )}
 
         {tab === 'history' && (
@@ -407,6 +405,9 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         )}
 
         {tab === 'analytics' && (
+          analyticsLoading || !p.analytics ? (
+            <p className="text-sm text-slate-500">Loading analytics…</p>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardBody className="p-5">
@@ -434,6 +435,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               </CardBody>
             </Card>
           </div>
+          )
         )}
       </div>
     </div>

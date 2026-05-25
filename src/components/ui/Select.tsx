@@ -24,6 +24,32 @@ function isGrouped(data: SelectData): data is SelectGroup[] {
   return data.length > 0 && 'groupLabel' in data[0]
 }
 
+/** Radix Select forbids empty string item values; map externally '' ↔ sentinel */
+const EMPTY_SELECT_VALUE = '__saios_none__'
+
+function normalizeOption(opt: SelectOption): SelectOption {
+  return opt.value === '' ? { ...opt, value: EMPTY_SELECT_VALUE } : opt
+}
+
+function normalizeData(data: SelectData): SelectData {
+  if (isGrouped(data)) {
+    return data.map((group) => ({
+      ...group,
+      options: group.options.map(normalizeOption),
+    }))
+  }
+  return (data as SelectOption[]).map(normalizeOption)
+}
+
+function toInternalValue(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  return value === '' ? EMPTY_SELECT_VALUE : value
+}
+
+function toExternalValue(value: string): string {
+  return value === EMPTY_SELECT_VALUE ? '' : value
+}
+
 /* ── Sub-components (composable) ─────────────────────────────────────────── */
 
 export const SelectRoot = SelectPrimitive.Root
@@ -191,7 +217,8 @@ export function SelectField({
   const helperId = `${generatedId}-helper`
   const errorId  = `${generatedId}-error`
   const hasError  = Boolean(error)
-  const grouped   = isGrouped(data)
+  const normalized = normalizeData(data)
+  const grouped   = isGrouped(normalized)
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
@@ -211,9 +238,9 @@ export function SelectField({
       )}
 
       <SelectRoot
-        value={value}
-        defaultValue={defaultValue}
-        onValueChange={onValueChange}
+        value={toInternalValue(value)}
+        defaultValue={toInternalValue(defaultValue)}
+        onValueChange={onValueChange ? (v) => onValueChange(toExternalValue(v)) : undefined}
         disabled={disabled}
       >
         <SelectTrigger
@@ -228,7 +255,7 @@ export function SelectField({
 
         <SelectContent>
           {grouped
-            ? (data as SelectGroup[]).map((group, gi) => (
+            ? (normalized as SelectGroup[]).map((group, gi) => (
                 <SelectPrimitive.Group key={gi}>
                   <SelectLabel>{group.groupLabel}</SelectLabel>
                   {group.options.map((opt) => (
@@ -236,10 +263,10 @@ export function SelectField({
                       {opt.label}
                     </SelectItem>
                   ))}
-                  {gi < data.length - 1 && <SelectSeparator />}
+                  {gi < normalized.length - 1 && <SelectSeparator />}
                 </SelectPrimitive.Group>
               ))
-            : (data as SelectOption[]).map((opt) => (
+            : (normalized as SelectOption[]).map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} disabled={opt.disabled}>
                   {opt.label}
                 </SelectItem>

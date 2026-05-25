@@ -127,7 +127,13 @@ export function NodeConfigPanel({ nodeId, nodeType, data, onChange, onClose }: N
             { value: 'new_customer', label: 'New Customer' },
             { value: 'payment_received', label: 'Payment Received' },
             { value: 'stock_level_changed', label: 'Stock Level Changed' },
-            { value: 'stock_below_reorder', label: 'Stock Below Reorder' },
+            { value: 'stock_below_reorder', label: 'Stock Below Reorder (STOCK_BELOW_REORDER)' },
+            { value: 'order_delivered', label: 'Order Delivered (ORDER_DELIVERED)' },
+            { value: 'goods_received', label: 'Goods Received (GOODS_RECEIVED)' },
+            { value: 'new_contact_created', label: 'New Contact Created' },
+            { value: 'deal_won', label: 'Deal Won' },
+            { value: 'deal_lost', label: 'Deal Lost' },
+            { value: 'follow_up_due', label: 'Follow-up Due' },
             { value: 'po_status_changed', label: 'PO Status Changed' },
           ]}
           value={String(config.eventType ?? 'new_order')}

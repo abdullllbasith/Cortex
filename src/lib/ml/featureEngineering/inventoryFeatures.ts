@@ -1,4 +1,3 @@
-import { InventoryEventType } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { addDays, dateKey, startOfDay } from '../utils'
 
@@ -15,37 +14,49 @@ export interface InventoryFeatureVector {
   leadTimeVariability: number
 }
 
+function toNumber(value: { toNumber(): number } | number | null | undefined): number {
+  if (value == null) return 0
+  return typeof value === 'number' ? value : value.toNumber()
+}
+
 export async function extractInventoryFeatures(tenantId: string): Promise<InventoryFeatureVector[]> {
   const end = startOfDay(new Date())
   const start = addDays(end, -LOOKBACK_DAYS)
 
   const products = await prisma.product.findMany({
-    where: { tenantId },
-    select: { id: true, name: true, inventoryLevel: true, supplierInfo: true },
+    where: { tenantId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      inventoryLevel: true,
+      supplierInfo: true,
+      stockBalances: { select: { quantityOnHand: true } },
+    },
   })
 
-  const events = await prisma.inventoryEvent.findMany({
+  const ledgerRows = await prisma.stockLedger.findMany({
     where: {
       tenantId,
-      timestamp: { gte: start, lte: end },
-      type: { in: [InventoryEventType.SALE, InventoryEventType.WASTE] },
+      transactionType: 'SALE',
+      createdAt: { gte: start, lte: end },
     },
-    select: { productId: true, quantity: true, timestamp: true },
+    select: { productId: true, quantity: true, createdAt: true },
   })
 
   const dailyByProduct = new Map<string, Map<string, number>>()
-  for (const e of events) {
-    const key = dateKey(e.timestamp)
-    const pmap = dailyByProduct.get(e.productId) ?? new Map()
-    pmap.set(key, (pmap.get(key) ?? 0) + Math.abs(e.quantity))
-    dailyByProduct.set(e.productId, pmap)
+  for (const row of ledgerRows) {
+    const key = dateKey(row.createdAt)
+    const pmap = dailyByProduct.get(row.productId) ?? new Map()
+    pmap.set(key, (pmap.get(key) ?? 0) + Math.abs(toNumber(row.quantity)))
+    dailyByProduct.set(row.productId, pmap)
   }
 
   return products.map((p) => {
+    const onHand = p.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0)
+    const currentStock = onHand || p.inventoryLevel
     const daily = dailyByProduct.get(p.id) ?? new Map<string, number>()
     const dailyValues = Array.from(daily.values())
     const totalConsumption = dailyValues.reduce((a, b) => a + b, 0)
-    const activeDays = dailyValues.length || 1
     const dailyConsumptionRate = totalConsumption / LOOKBACK_DAYS
     const weeklyDemand = dailyConsumptionRate * 7
 
@@ -76,7 +87,7 @@ export async function extractInventoryFeatures(tenantId: string): Promise<Invent
     return {
       productId: p.id,
       productName: p.name,
-      currentStock: p.inventoryLevel,
+      currentStock,
       dailyConsumptionRate,
       weeklyDemand,
       demandVariance,

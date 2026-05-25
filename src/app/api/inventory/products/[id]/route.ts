@@ -5,6 +5,7 @@ import { apiSuccess, paginatedMeta } from '@/lib/knowledge/response'
 import {
   deleteCatalogProduct,
   getProductDetail,
+  getProductAnalyticsSummary,
   getProductLedger,
   updateCatalogProduct,
 } from '@/lib/inventory/inventoryCatalogService'
@@ -27,7 +28,18 @@ export const GET = withTenantAuth(async (request, { auth, params }) => {
       )
     }
 
-    const product = await getProductDetail(auth.tenantId, id)
+    if (tab === 'analytics') {
+      const analytics = await getProductAnalyticsSummary(auth.tenantId, id)
+      if (!analytics) {
+        return NextResponse.json(
+          { success: false, data: null, error: { code: 'NOT_FOUND', message: 'Product not found' } },
+          { status: 404 },
+        )
+      }
+      return NextResponse.json(apiSuccess(analytics))
+    }
+
+    const product = await getProductDetail(auth.tenantId, id, { includeAnalytics: false })
     if (!product) {
       return NextResponse.json(
         { success: false, data: null, error: { code: 'NOT_FOUND', message: 'Product not found' } },

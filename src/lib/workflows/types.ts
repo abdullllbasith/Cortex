@@ -61,7 +61,7 @@ export const TRIGGER_NODE_TYPES = new Set([
 
 export const NODE_CATEGORIES = {
   triggers: ['trigger.schedule', 'trigger.event', 'trigger.webhook', 'trigger.manual'],
-  actions: ['action.send_notification', 'action.update_record', 'action.generate_document', 'action.ai_decision'],
+  actions: ['action.send_notification', 'action.update_record', 'action.generate_document', 'action.ai_decision', 'action.generate_reorder_suggestion', 'action.create_draft_po'],
   control: ['control.condition', 'control.delay', 'control.loop'],
   integrations: ['integration.http_request'],
 } as const

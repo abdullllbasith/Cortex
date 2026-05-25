@@ -3,8 +3,9 @@ import type { TenantPlan, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { PLAN_LIMITS } from '@/lib/settings/billingService'
 import { ROLE_LABELS } from '@/lib/settings/roleDefinitions'
+import { sendTeamInviteEmail } from '@/lib/email/teamInviteEmail'
 
-const INVITE_TTL_DAYS = 7
+const INVITE_TTL_HOURS = 48
 
 export interface TeamMemberDTO {
   id: string
@@ -46,7 +47,7 @@ export interface TeamOverviewDTO {
 
 function inviteExpiry(): Date {
   const d = new Date()
-  d.setDate(d.getDate() + INVITE_TTL_DAYS)
+  d.setHours(d.getHours() + INVITE_TTL_HOURS)
   return d
 }
 
@@ -206,8 +207,10 @@ export async function createInvitations(
   invitedById: string,
   invites: Array<{ email: string; role: UserRole }>,
   message?: string,
+  appUrl?: string,
 ) {
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })
+  const inviter = await prisma.user.findUniqueOrThrow({ where: { id: invitedById } })
   const limits = PLAN_LIMITS[tenant.plan]
 
   const [activeCount, pendingCount] = await Promise.all([
@@ -266,9 +269,17 @@ export async function createInvitations(
     ),
   )
 
-  // Log for dev — production would send email via provider
+  const baseUrl = appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   for (const inv of created) {
-    console.info('[team-invite]', inv.email, inv.token)
+    await sendTeamInviteEmail({
+      to: inv.email,
+      tenantName: tenant.name,
+      inviterName: inviter.fullName,
+      role: inv.role,
+      token: inv.token,
+      message,
+      appUrl: baseUrl,
+    })
   }
 
   return created.map((inv) => ({
@@ -280,9 +291,10 @@ export async function createInvitations(
   }))
 }
 
-export async function resendInvitation(tenantId: string, invitationId: string) {
+export async function resendInvitation(tenantId: string, invitationId: string, appUrl?: string) {
   const inv = await prisma.teamInvitation.findFirst({
     where: { id: invitationId, tenantId, status: 'PENDING' },
+    include: { invitedBy: true, tenant: true },
   })
   if (!inv) throw new Error('Invitation not found')
 
@@ -295,7 +307,17 @@ export async function resendInvitation(tenantId: string, invitationId: string) {
     },
   })
 
-  console.info('[team-invite-resend]', updated.email, updated.token)
+  const baseUrl = appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  await sendTeamInviteEmail({
+    to: updated.email,
+    tenantName: inv.tenant.name,
+    inviterName: inv.invitedBy.fullName,
+    role: updated.role,
+    token: updated.token,
+    message: updated.message,
+    appUrl: baseUrl,
+  })
+
   return updated
 }
 

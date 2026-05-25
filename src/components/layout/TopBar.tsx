@@ -23,6 +23,7 @@ import { getTitleFromPathname } from './nav-config'
 import { CommandPalette } from './CommandPalette'
 import { NotificationDropdown } from '@/components/notifications/NotificationDropdown'
 import { useSessionStore } from '@/store/sessionStore'
+import { signOutUser } from '@/lib/auth/signOut'
 import { formatUserRole } from '@/lib/auth/displayUser'
 import { useDashboardGreeting } from '@/hooks/useDashboardGreeting'
 
@@ -243,7 +244,7 @@ function UserMenu() {
 
           <DropdownMenu.Item
             className={cn(menuItemCls, 'text-red-600 dark:text-red-400 data-[highlighted]:bg-red-50 data-[highlighted]:text-red-700 dark:data-[highlighted]:bg-red-950/40')}
-            onSelect={() => router.push('/login')}
+            onSelect={() => void signOutUser(router)}
           >
             <LogOut className="h-4 w-4" aria-hidden="true" />
             Sign out

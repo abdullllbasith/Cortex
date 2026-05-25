@@ -11,10 +11,12 @@ import {
   XCircle,
   Truck,
   ArrowRight,
+  ShoppingCart,
 } from 'lucide-react'
 import { PageHeader, Card, CardBody, Badge, Skeleton } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
 import { swrFetcher } from '@/lib/api/apiClient'
+import { useReorderSuggestionCount } from '@/hooks/useReorderSuggestionCount'
 
 interface DashboardData {
   kpis: {
@@ -90,6 +92,7 @@ function formatMoney(n: number) {
 
 export function InventoryDashboardClient() {
   const router = useRouter()
+  const reorderCount = useReorderSuggestionCount()
   const { data, isLoading } = useSWR<DashboardData>('/inventory/dashboard', swrFetcher)
 
   const fastCols: ColumnDef<Record<string, unknown>>[] = [
@@ -134,8 +137,17 @@ export function InventoryDashboardClient() {
             <Link href="/inventory/products" className="text-sm text-indigo-600 hover:underline">
               Products
             </Link>
+            <Link href="/inventory/categories" className="text-sm text-indigo-600 hover:underline">
+              Categories
+            </Link>
             <Link href="/inventory/purchase-orders" className="text-sm text-indigo-600 hover:underline">
               Purchase Orders
+            </Link>
+            <Link href="/inventory/suppliers" className="text-sm text-indigo-600 hover:underline">
+              Suppliers
+            </Link>
+            <Link href="/inventory/reorder" className="text-sm text-indigo-600 hover:underline">
+              Reorder Centre
             </Link>
             <Link href="/inventory/adjustments" className="text-sm text-indigo-600 hover:underline">
               Adjustments
@@ -148,6 +160,27 @@ export function InventoryDashboardClient() {
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-auto">
+        {reorderCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-4 py-3">
+            <div className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-medium">Reorder required</p>
+                <p className="text-sm opacity-90">
+                  {reorderCount} product{reorderCount === 1 ? '' : 's'} below reorder point — review suggestions and create draft POs.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/inventory/reorder"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              Open reorder centre
+            </Link>
+          </div>
+        )}
+
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : (
@@ -210,8 +243,8 @@ export function InventoryDashboardClient() {
             <CardBody className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">Reorder Recommendations</h3>
-                <Link href="/inventory/purchase-orders" className="text-sm text-indigo-600 flex items-center gap-1">
-                  Create PO <ArrowRight className="h-3 w-3" />
+                <Link href="/inventory/reorder" className="text-sm text-indigo-600 flex items-center gap-1">
+                  Reorder centre <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
               {(data?.reorderRecommendations ?? []).length === 0 ? (

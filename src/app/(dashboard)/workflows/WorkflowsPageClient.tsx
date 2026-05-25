@@ -8,7 +8,7 @@ import { PageHeader, Button, Badge, Skeleton, Modal, ConfirmDialog, toast } from
 import { swrFetcher, apiClient } from '@/lib/api/apiClient'
 import { ApiError } from '@/lib/api/types'
 import { queryKeys } from '@/lib/api/queryKeys'
-import { WorkflowAnalytics } from '@/components/workflows/WorkflowAnalytics'
+import { LazyWorkflowAnalytics } from '@/lib/lazy/components'
 import { useRouter } from 'next/navigation'
 import { Toggle } from '@/components/ui'
 
@@ -99,7 +99,7 @@ export default function WorkflowsPageClient() {
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        <WorkflowAnalytics data={analytics as never} loading={analyticsLoading} />
+        <LazyWorkflowAnalytics data={analytics as never} loading={analyticsLoading} />
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -173,6 +173,35 @@ export default function WorkflowsPageClient() {
       />
 
       <Modal open={templateOpen} onOpenChange={setTemplateOpen} title="New Workflow" size="lg">
+        {templates.some((t) =>
+          ['order-to-cash', 'procure-to-pay', 'procure-to-pay-receipt', 'lead-to-deal', 'employee-onboarding-v2', 'month-end-close'].includes(t.id),
+        ) && (
+          <div className="mb-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400 mb-2">
+              Cross-module ERP workflows
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {templates
+                .filter((t) =>
+                  ['order-to-cash', 'procure-to-pay', 'procure-to-pay-receipt', 'lead-to-deal', 'employee-onboarding-v2', 'month-end-close'].includes(t.id),
+                )
+                .map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={creating}
+                    onClick={() => createWorkflow(t.id)}
+                    className="text-left rounded-lg border-2 border-indigo-200 dark:border-indigo-800 p-3 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-colors"
+                  >
+                    <p className="text-sm font-semibold">{t.name}</p>
+                    <Badge variant="outline" size="sm" className="mt-1">{t.category}</Badge>
+                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">{t.description}</p>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">All templates</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           {templates.map((t) => (
             <button

@@ -162,6 +162,22 @@ export const ROUTE_PERMISSIONS: Array<{
   { match: /^\/api\/inventory/, method: 'POST', permission: PERMISSIONS.INVENTORY_MANAGE },
   { match: /^\/api\/inventory/, method: 'PUT', permission: PERMISSIONS.INVENTORY_MANAGE },
   { match: /^\/api\/inventory/, method: 'DELETE', permission: PERMISSIONS.INVENTORY_MANAGE },
+  { match: /^\/api\/crm/, method: 'GET', permission: PERMISSIONS.CRM_VIEW },
+  { match: /^\/api\/crm/, method: 'POST', permission: PERMISSIONS.CRM_MANAGE },
+  { match: /^\/api\/crm/, method: 'PUT', permission: PERMISSIONS.CRM_MANAGE },
+  { match: /^\/api\/crm/, method: 'DELETE', permission: PERMISSIONS.CRM_MANAGE },
+  { match: /^\/api\/sales/, method: 'GET', permission: PERMISSIONS.SALES_VIEW },
+  { match: /^\/api\/sales/, method: 'POST', permission: PERMISSIONS.SALES_MANAGE },
+  { match: /^\/api\/sales/, method: 'PUT', permission: PERMISSIONS.SALES_MANAGE },
+  { match: /^\/api\/sales/, method: 'DELETE', permission: PERMISSIONS.SALES_MANAGE },
+  { match: /^\/api\/finance/, method: 'GET', permission: PERMISSIONS.FINANCE_VIEW },
+  { match: /^\/api\/finance/, method: 'POST', permission: PERMISSIONS.FINANCE_MANAGE },
+  { match: /^\/api\/finance/, method: 'PUT', permission: PERMISSIONS.FINANCE_MANAGE },
+  { match: /^\/api\/finance/, method: 'DELETE', permission: PERMISSIONS.FINANCE_MANAGE },
+  { match: /^\/api\/hr/, method: 'GET', permission: PERMISSIONS.HR_VIEW },
+  { match: /^\/api\/hr/, method: 'POST', permission: PERMISSIONS.HR_MANAGE },
+  { match: /^\/api\/hr/, method: 'PUT', permission: PERMISSIONS.HR_MANAGE },
+  { match: /^\/api\/hr/, method: 'DELETE', permission: PERMISSIONS.HR_MANAGE },
 ]
 
 // Fix typo - PER_PERMISSIONS doesn't exist

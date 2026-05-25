@@ -30,6 +30,7 @@ async function bootstrapSession(payload: {
   email?: string
   password?: string
   supabaseAccessToken?: string
+  rememberMe?: boolean
 }, tenantSlug?: string | null) {
   const res = await fetch('/api/auth/session', {
     method: 'POST',
@@ -96,8 +97,8 @@ export function LoginForm() {
 
       const result = await bootstrapSession(
         accessToken
-          ? { supabaseAccessToken: accessToken }
-          : { email: values.email, password: values.password },
+          ? { supabaseAccessToken: accessToken, rememberMe: values.rememberMe }
+          : { email: values.email, password: values.password, rememberMe: values.rememberMe },
         tenantSlug,
       )
 
@@ -114,7 +115,10 @@ export function LoginForm() {
       })
 
       if (result.mfaRequired) {
-        router.push('/mfa/verify')
+        const mfaUrl = searchParams.get('redirect')
+          ? `/mfa/verify?redirect=${encodeURIComponent(searchParams.get('redirect')!)}`
+          : '/mfa/verify'
+        router.push(mfaUrl)
         return
       }
 

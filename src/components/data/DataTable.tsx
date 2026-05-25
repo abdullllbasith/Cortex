@@ -60,6 +60,8 @@ export interface DataTableProps<TData extends Record<string, unknown>> {
   /** Column ids to highlight in mobile card view (defaults to first 3 visible) */
   mobileColumns?: string[]
   className?: string
+  /** Number of skeleton rows while loading (default 5) */
+  skeletonRowCount?: number
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -230,6 +232,7 @@ export function DataTable<TData extends Record<string, unknown>>({
   hiddenColumns = new Set(),
   mobileColumns,
   className,
+  skeletonRowCount = 5,
 }: DataTableProps<TData>) {
   const isMobile = useIsMobile()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -317,7 +320,7 @@ export function DataTable<TData extends Record<string, unknown>>({
     }
   }
 
-  const skeletonRows = Array.from({ length: 5 })
+  const skeletonRows = Array.from({ length: skeletonRowCount })
   const isEmpty = !loading && data.length === 0
 
   if (isMobile) {

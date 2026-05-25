@@ -1,34 +1,103 @@
+import { FinancePaymentMethod, FinancePaymentType, InvoiceStatus } from '@prisma/client'
+import { prisma } from '@/lib/db/prisma'
+import { getApAgingReport } from '@/lib/finance/billService'
+import {
+  createInvoice as createInvoiceRecord,
+  getArAgingReport,
+  recordPayment as recordInvoicePayment,
+} from '@/lib/finance/invoiceService'
+import { getProfitAndLoss } from '@/lib/finance/reportingService'
 import { BaseAgent } from './core/BaseAgent'
 import type { AgentTaskInput, AgentToolDefinition } from './core/types'
-import { getTenantProductStats, parsePeriod } from './tools/tenantData'
+
+function toNumber(value: { toNumber(): number } | number | null | undefined): number {
+  if (value == null) return 0
+  return typeof value === 'number' ? value : value.toNumber()
+}
+
+type FinancePeriod = 'today' | 'week' | 'month' | 'quarter'
+
+function resolveFinancePeriod(period: string): { start: Date; end: Date; label: string } {
+  const normalized = period.toLowerCase().replace(/\s+/g, '')
+  const now = new Date()
+  const end = new Date(now)
+  let start: Date
+
+  if (normalized === 'today' || normalized === 'thisday') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    return { start, end, label: 'Today' }
+  }
+  if (normalized === 'week' || normalized === 'thisweek' || normalized === 'last7days') {
+    start = new Date(now.getTime() - 7 * 86400000)
+    return { start, end, label: 'Last 7 days' }
+  }
+  if (normalized === 'quarter' || normalized === 'thisquarter') {
+    const q = Math.floor(now.getMonth() / 3)
+    start = new Date(now.getFullYear(), q * 3, 1)
+    return { start, end, label: 'This quarter' }
+  }
+  start = new Date(now.getFullYear(), now.getMonth(), 1)
+  return { start, end, label: 'This month' }
+}
+
+function periodToReportDates(period: string) {
+  const { start, end, label } = resolveFinancePeriod(period)
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10),
+    label,
+  }
+}
+
+const OPEN_INVOICE_STATUSES: InvoiceStatus[] = [
+  InvoiceStatus.SENT,
+  InvoiceStatus.PARTIAL,
+  InvoiceStatus.VIEWED,
+  InvoiceStatus.OVERDUE,
+]
 
 export class FinanceAgent extends BaseAgent<AgentTaskInput, Record<string, unknown>> {
-  readonly systemPrompt = `You are an expert CFO AI agent with deep access to accounting and financial data.
-Analyze revenue, expenses, cashflow, and profit margins. Identify anomalies, trends, and provide actionable financial insights.
-Always cite specific numbers and time periods. Flag risks proactively.`
+  private readonly actorId?: string
+
+  readonly systemPrompt = `You are an expert CFO AI agent with full AR/AP, invoicing, and reporting access.
+Revenue is recognized from invoice payments in the ledger. All figures come from live finance tables — never estimate balances.`
 
   readonly tools: AgentToolDefinition[] = [
-    { name: 'getRevenue', description: 'Get revenue for a time period', parameters: { period: 'string' } },
-    { name: 'getExpenses', description: 'Get expenses for a time period', parameters: { period: 'string' } },
-    { name: 'getCashflow', description: 'Get cashflow summary' },
-    { name: 'getProfitMargin', description: 'Calculate profit margin for a period', parameters: { period: 'string' } },
-    { name: 'queryKnowledgeBase', description: 'Search financial knowledge documents' },
+    { name: 'getRevenue', description: 'Sum invoice payments in period', parameters: { period: 'string' } },
+    { name: 'getOutstandingAR', description: 'Unpaid invoices by aging bucket' },
+    { name: 'getOutstandingAP', description: 'Unpaid bills by aging bucket' },
+    { name: 'getProfitAndLoss', description: 'P&L for period', parameters: { period: 'string' } },
+    { name: 'createInvoice', description: 'Create draft invoice', parameters: { contactId: 'string', items: 'array' } },
+    { name: 'recordPayment', description: 'Record payment against invoice', parameters: { invoiceId: 'string', amount: 'number', paymentMethod: 'string' } },
+    { name: 'queryKnowledgeBase', description: 'Search financial knowledge' },
   ]
 
   constructor(tenantId: string, userId?: string, taskId?: string) {
     super(tenantId, 'finance', undefined, userId, taskId)
+    this.actorId = userId
   }
 
   protected async executeTool(toolName: string, input: Record<string, unknown>): Promise<unknown> {
     switch (toolName) {
       case 'getRevenue':
-        return this.getRevenue(String(input.period ?? 'this month'))
-      case 'getExpenses':
-        return this.getExpenses(String(input.period ?? 'this month'))
-      case 'getCashflow':
-        return this.getCashflow()
-      case 'getProfitMargin':
-        return this.getProfitMargin(String(input.period ?? 'this month'))
+        return this.getRevenue(String(input.period ?? 'month'))
+      case 'getOutstandingAR':
+        return this.getOutstandingAR()
+      case 'getOutstandingAP':
+        return this.getOutstandingAP()
+      case 'getProfitAndLoss':
+        return this.getProfitAndLoss(String(input.period ?? 'month'))
+      case 'createInvoice':
+        return this.createInvoice(
+          String(input.contactId ?? ''),
+          (input.items as Array<Record<string, unknown>>) ?? [],
+        )
+      case 'recordPayment':
+        return this.recordPayment(
+          String(input.invoiceId ?? ''),
+          Number(input.amount ?? 0),
+          String(input.paymentMethod ?? input.method ?? 'BANK_TRANSFER'),
+        )
       case 'queryKnowledgeBase':
         return this.toolkit.queryKnowledgeBase(String(input.query ?? 'financial policy'), 'knowledge')
       default:
@@ -38,87 +107,145 @@ Always cite specific numbers and time periods. Flag risks proactively.`
 
   protected heuristicThink(input: AgentTaskInput, iteration: number) {
     const lower = input.task.toLowerCase()
-    if (/\bexpense/i.test(lower) && /\bmarch/i.test(lower)) {
-      return {
-        reasoning: 'User asked about expense increase in March — comparing periods and identifying anomalies',
-        plannedTool: 'getExpenses',
-        plannedInput: { period: 'march' },
-        iteration,
-      }
+    if (/\bar\b|receivable/i.test(lower)) {
+      return { reasoning: 'AR aging', plannedTool: 'getOutstandingAR', plannedInput: {}, iteration }
     }
-    if (/\brevenue/i.test(lower)) {
-      return { reasoning: 'Revenue analysis requested', plannedTool: 'getRevenue', plannedInput: { period: 'this month' }, iteration }
+    if (/\bap\b|payable/i.test(lower)) {
+      return { reasoning: 'AP aging', plannedTool: 'getOutstandingAP', plannedInput: {}, iteration }
     }
-    if (/\bcashflow/i.test(lower)) {
-      return { reasoning: 'Cashflow analysis requested', plannedTool: 'getCashflow', plannedInput: {}, iteration }
+    if (/p\s*&\s*l|profit|loss/i.test(lower)) {
+      return { reasoning: 'P&L', plannedTool: 'getProfitAndLoss', plannedInput: { period: 'month' }, iteration }
     }
-    return super.heuristicThink(input, iteration)
+    if (/\brevenue|collected|cash in/i.test(lower)) {
+      return { reasoning: 'Collected revenue', plannedTool: 'getRevenue', plannedInput: { period: 'month' }, iteration }
+    }
+    return { reasoning: 'Finance overview', plannedTool: 'getProfitAndLoss', plannedInput: { period: 'month' }, iteration }
   }
 
+  /** Sum Payment.amount (INVOICE_PAYMENT) where paymentDate falls in period. */
   async getRevenue(period: string) {
-    const { label } = parsePeriod(period)
-    const stats = await getTenantProductStats(this.tenantId)
-    const variance = (Math.random() * 0.1 - 0.05)
+    const range = resolveFinancePeriod(period)
+    const agg = await prisma.payment.aggregate({
+      where: {
+        tenantId: this.tenantId,
+        type: FinancePaymentType.INVOICE_PAYMENT,
+        paymentDate: { gte: range.start, lte: range.end },
+      },
+      _sum: { amount: true },
+      _count: true,
+    })
+
     return {
-      period: label,
-      revenue: Math.round(stats.revenue * (1 + variance)),
+      period: range.label as FinancePeriod | string,
+      start: range.start.toISOString(),
+      end: range.end.toISOString(),
+      totalRevenue: Math.round(toNumber(agg._sum.amount) * 100) / 100,
+      paymentCount: agg._count,
       currency: 'USD',
-      trend: variance > 0 ? 'up' : 'down',
-      changePercent: Math.round(variance * 1000) / 10,
+      source: 'finance_payments',
     }
   }
 
-  async getExpenses(period: string) {
-    const { label, start, end } = parsePeriod(period)
-    const stats = await getTenantProductStats(this.tenantId)
-    const current = Math.round(stats.expenses)
-    const previous = Math.round(stats.expenses * 0.88)
-    const increase = current - previous
+  async getOutstandingAR() {
+    const [report, invoiceSum] = await Promise.all([
+      getArAgingReport(this.tenantId),
+      prisma.invoice.aggregate({
+        where: {
+          tenantId: this.tenantId,
+          status: { in: OPEN_INVOICE_STATUSES },
+        },
+        _sum: { amountDue: true },
+        _count: true,
+      }),
+    ])
 
     return {
-      period: label,
-      start,
-      end,
-      totalExpenses: current,
-      previousPeriod: previous,
-      change: increase,
-      changePercent: Math.round((increase / previous) * 1000) / 10,
-      breakdown: [
-        { category: 'COGS', amount: Math.round(stats.cogs), percent: 65 },
-        { category: 'Operations', amount: Math.round(stats.expenses * 0.2), percent: 20 },
-        { category: 'Marketing', amount: Math.round(stats.expenses * 0.1), percent: 10 },
-        { category: 'Other', amount: Math.round(stats.expenses * 0.05), percent: 5 },
-      ],
-      anomalies: increase > previous * 0.1
-        ? [{ category: 'Operations', reason: 'Increased fulfillment costs in March', impact: increase }]
-        : [],
+      totalOutstanding: Math.round(toNumber(invoiceSum._sum.amountDue) * 100) / 100,
+      openInvoiceCount: invoiceSum._count,
+      buckets: report.buckets,
+      currency: 'USD',
     }
   }
 
-  async getCashflow() {
-    const stats = await getTenantProductStats(this.tenantId)
-    const revenue = stats.revenue
-    const expenses = stats.expenses
+  async getOutstandingAP() {
+    const report = await getApAgingReport(this.tenantId)
     return {
-      operatingCashflow: Math.round(revenue - expenses),
-      revenue: Math.round(revenue),
-      expenses: Math.round(expenses),
-      runwayMonths: Math.round((revenue - expenses) / (expenses / 12)),
-      alerts: revenue - expenses < 0 ? ['Negative operating cashflow detected'] : [],
+      totalOutstanding: report.totalOutstanding,
+      buckets: report.buckets,
+      currency: 'USD',
     }
   }
 
-  async getProfitMargin(period: string) {
-    const { label } = parsePeriod(period)
-    const stats = await getTenantProductStats(this.tenantId)
-    const revenue = stats.revenue
-    const margin = ((revenue - stats.cogs) / revenue) * 100
+  async getProfitAndLoss(period: string) {
+    const { startDate, endDate, label } = periodToReportDates(period)
+    const report = await getProfitAndLoss(this.tenantId, startDate, endDate)
+    return { ...report, periodLabel: label }
+  }
+
+  async createInvoice(contactId: string, items: Array<Record<string, unknown>>) {
+    if (!contactId || !items.length) throw new Error('contactId and items are required')
+
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 30)
+
+    const invoice = await createInvoiceRecord(
+      this.tenantId,
+      {
+        contactId,
+        dueDate: dueDate.toISOString(),
+        issueDate: new Date().toISOString(),
+        items: items.map((i) => ({
+          description: String(i.description ?? i.name ?? 'Line item'),
+          quantity: Number(i.quantity ?? 1),
+          unitPrice: Number(i.unitPrice ?? i.price ?? 0),
+          discount: Number(i.discount ?? 0),
+          taxRate: Number(i.taxRate ?? 0),
+          productId: i.productId ? String(i.productId) : null,
+        })),
+      },
+      this.actorId,
+    )
+
     return {
-      period: label,
-      grossMargin: Math.round(margin * 10) / 10,
-      netMargin: Math.round((margin - 15) * 10) / 10,
-      benchmark: 35,
-      status: margin >= 35 ? 'healthy' : 'below_benchmark',
+      id: invoice?.id,
+      invoiceNumber: invoice?.invoiceNumber,
+      status: invoice?.status,
+      total: invoice?.total,
+      amountDue: invoice?.amountDue,
+      dueDate: invoice?.dueDate,
+    }
+  }
+
+  async recordPayment(invoiceId: string, amount: number, paymentMethod: string) {
+    if (!invoiceId || amount <= 0) throw new Error('invoiceId and positive amount are required')
+
+    const normalized = paymentMethod.toUpperCase().replace(/\s+/g, '_')
+    const method =
+      normalized === 'CHECK' || normalized === 'CHEQUE'
+        ? FinancePaymentMethod.CHEQUE
+        : normalized === 'CREDIT' || normalized === 'CARD'
+          ? FinancePaymentMethod.CREDIT
+          : (FinancePaymentMethod[normalized as keyof typeof FinancePaymentMethod] ??
+            FinancePaymentMethod.BANK_TRANSFER)
+
+    const invoice = await recordInvoicePayment(
+      invoiceId,
+      this.tenantId,
+      {
+        amount,
+        paymentMethod: method,
+        paymentDate: new Date().toISOString(),
+      },
+      this.actorId,
+    )
+
+    return {
+      invoiceId,
+      invoiceNumber: invoice?.invoiceNumber,
+      status: invoice?.status,
+      amountPaid: invoice?.amountPaid,
+      amountDue: invoice?.amountDue,
+      paymentRecorded: amount,
     }
   }
 }

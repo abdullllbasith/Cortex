@@ -1,8 +1,8 @@
 import { StockTransactionType } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
-import { getLowStockProducts, classifyStock } from '@/lib/inventory/inventoryDashboardService'
-import { getProductLedger } from '@/lib/inventory/inventoryCatalogService'
-import { createPO } from '@/lib/inventory/purchaseOrderService'
+import { classifyStock } from '@/lib/inventory/inventoryDashboardService'
+import { createPO, receiveGoods } from '@/lib/inventory/purchaseOrderService'
+import { generateReorderSuggestions } from '@/lib/inventory/reorderService'
 import { getStockBalance, recordTransaction } from '@/lib/inventory/stockEngine'
 import { BaseAgent } from './core/BaseAgent'
 import type { AgentTaskInput, AgentToolDefinition } from './core/types'
@@ -10,6 +10,12 @@ import type { AgentTaskInput, AgentToolDefinition } from './core/types'
 function toNumber(value: { toNumber(): number } | number | null | undefined): number {
   if (value == null) return 0
   return typeof value === 'number' ? value : value.toNumber()
+}
+
+function classifyUrgency(onHand: number, reorderPoint: number): 'critical' | 'warning' | 'ok' {
+  if (onHand <= 0) return 'critical'
+  if (reorderPoint > 0 && onHand <= reorderPoint) return 'warning'
+  return 'ok'
 }
 
 async function resolveDefaultWarehouseId(tenantId: string): Promise<string> {
@@ -25,18 +31,17 @@ async function resolveDefaultWarehouseId(tenantId: string): Promise<string> {
 export class InventoryAgent extends BaseAgent<AgentTaskInput, Record<string, unknown>> {
   private readonly actorId?: string
 
-  readonly systemPrompt = `You are an expert Supply Chain Manager AI agent.
-Monitor stock levels, predict demand, calculate reorder points, and optimize supplier relationships.
-Proactively flag low stock and suggest reorders with quantities and timing.`
+  readonly systemPrompt = `You are an expert Supply Chain Manager AI agent with full ERP inventory access.
+Monitor stock levels, predict demand, calculate reorder points, create purchase orders, and receive goods.
+Proactively flag low stock and suggest reorders with quantities, suppliers, and timing. All data is live from the tenant database.`
 
   readonly tools: AgentToolDefinition[] = [
-    { name: 'getStockLevels', description: 'Get current stock levels for all products' },
-    { name: 'getLowStockItems', description: 'Get items below reorder threshold' },
-    { name: 'updateStock', description: 'Record a stock adjustment', parameters: { productId: 'string', quantity: 'number', type: 'string', notes: 'string' } },
-    { name: 'getStockHistory', description: 'Get stock ledger history for a product', parameters: { productId: 'string', period: 'string' } },
-    { name: 'createPurchaseOrder', description: 'Create a draft purchase order', parameters: { supplierId: 'string', items: 'array' } },
-    { name: 'getSupplierLeadTimes', description: 'Get supplier lead time data' },
-    { name: 'calculateReorderPoint', description: 'Calculate reorder point for a product', parameters: { productId: 'string' } },
+    { name: 'getStockLevels', description: 'StockBalance joined to Product, optional warehouse filter', parameters: { warehouseId: 'string' } },
+    { name: 'getLowStockItems', description: 'Products at or below reorder point with urgency classification' },
+    { name: 'getReorderSuggestions', description: 'EOQ-based reorder suggestions grouped by supplier' },
+    { name: 'createPurchaseOrder', description: 'Create draft PO', parameters: { supplierId: 'string', items: 'array' } },
+    { name: 'receiveGoods', description: 'Receive goods against a PO', parameters: { poId: 'string', items: 'array' } },
+    { name: 'adjustStock', description: 'Record stock adjustment via stockEngine', parameters: { productId: 'string', quantity: 'number', type: 'string', reason: 'string' } },
     { name: 'queryKnowledgeBase', description: 'Search inventory knowledge' },
   ]
 
@@ -48,27 +53,29 @@ Proactively flag low stock and suggest reorders with quantities and timing.`
   protected async executeTool(toolName: string, input: Record<string, unknown>): Promise<unknown> {
     switch (toolName) {
       case 'getStockLevels':
-        return this.getStockLevels()
+        return this.getStockLevels(input.warehouseId ? String(input.warehouseId) : undefined)
       case 'getLowStockItems':
         return this.getLowStockItems()
-      case 'updateStock':
-        return this.updateStock(
-          String(input.productId ?? ''),
-          Number(input.quantity ?? 0),
-          String(input.type ?? 'ADJUSTMENT'),
-          input.notes ? String(input.notes) : undefined,
-        )
-      case 'getStockHistory':
-        return this.getStockHistory(String(input.productId ?? ''), String(input.period ?? '30d'))
+      case 'getReorderSuggestions':
+        return this.getReorderSuggestions()
       case 'createPurchaseOrder':
         return this.createPurchaseOrder(
           String(input.supplierId ?? ''),
           (input.items as Array<{ productId: string; quantity: number; unitCost: number }>) ?? [],
         )
-      case 'getSupplierLeadTimes':
-        return this.getSupplierLeadTimes()
-      case 'calculateReorderPoint':
-        return this.calculateReorderPoint(String(input.productId ?? ''))
+      case 'receiveGoods':
+        return this.receiveGoods(
+          String(input.poId ?? ''),
+          (input.items as Array<{ poItemIndex: number; quantityReceived: number; unitCost?: number }>) ?? [],
+        )
+      case 'adjustStock':
+      case 'createStockAdjustment':
+        return this.adjustStock(
+          String(input.productId ?? ''),
+          Number(input.quantity ?? input.qty ?? 0),
+          String(input.type ?? 'ADJUSTMENT'),
+          String(input.reason ?? input.notes ?? 'Agent stock adjustment'),
+        )
       case 'queryKnowledgeBase':
         return this.toolkit.queryKnowledgeBase(String(input.query ?? 'inventory'), 'product')
       default:
@@ -78,67 +85,92 @@ Proactively flag low stock and suggest reorders with quantities and timing.`
 
   protected heuristicThink(input: AgentTaskInput, iteration: number) {
     const lower = input.task.toLowerCase()
-    if (/low stock|stock level|out of stock/i.test(lower)) {
+    if (/reorder|suggestion/i.test(lower)) {
+      return { reasoning: 'Generating reorder suggestions', plannedTool: 'getReorderSuggestions', plannedInput: {}, iteration }
+    }
+    if (/low stock|below reorder/i.test(lower)) {
       return { reasoning: 'Checking low stock items', plannedTool: 'getLowStockItems', plannedInput: {}, iteration }
     }
-    if (/reorder|purchase order/i.test(lower)) {
-      return { reasoning: 'Checking reorder recommendations', plannedTool: 'getLowStockItems', plannedInput: {}, iteration }
+    if (/purchase order|create po/i.test(lower)) {
+      return { reasoning: 'Reviewing reorder needs before PO', plannedTool: 'getReorderSuggestions', plannedInput: {}, iteration }
     }
-    return { reasoning: 'Inventory overview', plannedTool: 'getStockLevels', plannedInput: {}, iteration }
+    if (/adjust|write[- ]?off|correction/i.test(lower)) {
+      return { reasoning: 'Stock adjustment', plannedTool: 'adjustStock', plannedInput: {}, iteration }
+    }
+    return { reasoning: 'Inventory stock overview', plannedTool: 'getStockLevels', plannedInput: {}, iteration }
   }
 
-  async getStockLevels() {
-    const products = await prisma.product.findMany({
-      where: { tenantId: this.tenantId, isActive: true, trackInventory: true },
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        reorderPoint: true,
-        stockBalances: { select: { quantityOnHand: true, quantityReserved: true } },
+  /** StockBalance × Product, ordered by on-hand ascending (lowest first). */
+  async getStockLevels(warehouseId?: string) {
+    const balances = await prisma.stockBalance.findMany({
+      where: {
+        tenantId: this.tenantId,
+        product: { isActive: true, trackInventory: true },
+        ...(warehouseId ? { warehouseId } : {}),
       },
-      orderBy: { name: 'asc' },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            reorderPoint: true,
+            reorderQuantity: true,
+          },
+        },
+        warehouse: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { quantityOnHand: 'asc' },
     })
 
-    return products.map((p) => {
-      const onHand = p.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0)
-      const reserved = p.stockBalances.reduce((s, b) => s + toNumber(b.quantityReserved), 0)
-      const reorderPoint = toNumber(p.reorderPoint)
+    return balances.map((sb) => {
+      const onHand = toNumber(sb.quantityOnHand)
+      const reserved = toNumber(sb.quantityReserved)
+      const onOrder = toNumber(sb.quantityOnOrder)
+      const reorderPoint = toNumber(sb.product.reorderPoint)
       return {
-        productId: p.id,
-        sku: p.sku,
-        name: p.name,
+        productId: sb.product.id,
+        sku: sb.product.sku,
+        name: sb.product.name,
+        warehouseId: sb.warehouseId,
+        warehouseName: sb.warehouse.name,
         quantityOnHand: onHand,
+        quantityReserved: reserved,
         quantityAvailable: onHand - reserved,
+        quantityOnOrder: onOrder,
         reorderPoint,
+        reorderQuantity: toNumber(sb.product.reorderQuantity),
         stockHealth: classifyStock(onHand, reorderPoint),
+        urgency: classifyUrgency(onHand, reorderPoint),
       }
     })
   }
 
+  /** Products where on-hand ≤ reorder point, with critical/warning urgency. */
   async getLowStockItems() {
-    const items = await getLowStockProducts(this.tenantId)
+    const levels = await this.getStockLevels()
+    const low = levels.filter((row) => row.reorderPoint > 0 && row.quantityOnHand <= row.reorderPoint)
+
     return {
-      count: items.length,
-      items: items.map((item) => ({
-        productId: item.productId,
-        sku: item.sku,
-        name: item.name,
-        onHand: item.onHand,
-        reorderPoint: item.reorderPoint,
-        suggestedOrderQty: item.suggestedOrderQty,
-        urgency:
-          item.onHand <= 0 ? 'immediate' : item.onHand <= item.reorderPoint * 0.5 ? 'high' : 'within_week',
-      })),
+      count: low.length,
+      items: low
+        .map((row) => ({
+          ...row,
+          urgency: row.urgency === 'ok' ? 'warning' : row.urgency,
+          daysOfCover:
+            row.quantityOnHand > 0 && row.reorderPoint > 0
+              ? Math.round((row.quantityOnHand / row.reorderPoint) * 10) / 10
+              : 0,
+        }))
+        .sort((a, b) => a.quantityOnHand - b.quantityOnHand),
     }
   }
 
-  async updateStock(
-    productId: string,
-    quantity: number,
-    type: string,
-    notes?: string,
-  ) {
+  async getReorderSuggestions() {
+    return generateReorderSuggestions(this.tenantId, 'all')
+  }
+
+  async adjustStock(productId: string, quantity: number, type: string, reason: string) {
     if (!productId || quantity === 0) throw new Error('productId and non-zero quantity are required')
 
     const warehouseId = await resolveDefaultWarehouseId(this.tenantId)
@@ -151,25 +183,12 @@ Proactively flag low stock and suggest reorders with quantities and timing.`
       quantity,
       referenceType: 'AGENT_ADJUSTMENT',
       referenceId: `agent-${Date.now()}`,
-      notes: notes ?? 'Inventory agent stock update',
+      notes: reason,
       performedBy: this.actorId,
     })
 
-    const balances = await getStockBalance(this.tenantId, productId)
-    return { ...result, balances }
-  }
-
-  async getStockHistory(productId: string, period: string) {
-    const ledger = await getProductLedger(this.tenantId, productId, { page: 1, limit: 50 })
-    let entries = ledger.entries
-
-    if (period && period !== 'all') {
-      const days = period === '7d' ? 7 : period === '90d' ? 90 : 30
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-      entries = entries.filter((e) => new Date(e.createdAt) >= cutoff)
-    }
-
-    return { productId, period, count: entries.length, entries }
+    const balances = await getStockBalance(this.tenantId, productId, warehouseId)
+    return { ...result, balances, reason, transactionType }
   }
 
   async createPurchaseOrder(
@@ -179,11 +198,13 @@ Proactively flag low stock and suggest reorders with quantities and timing.`
     if (!supplierId || !items.length) throw new Error('supplierId and items are required')
 
     const warehouseId = await resolveDefaultWarehouseId(this.tenantId)
-    return createPO(
+    const created = await createPO(
       this.tenantId,
       {
         supplierId,
         warehouseId,
+        shippingCost: 0,
+        currency: 'USD',
         items: items.map((i) => ({
           productId: i.productId,
           quantity: i.quantity,
@@ -193,40 +214,34 @@ Proactively flag low stock and suggest reorders with quantities and timing.`
       },
       this.actorId,
     )
-  }
 
-  async getSupplierLeadTimes() {
-    const suppliers = await prisma.supplier.findMany({
-      where: { tenantId: this.tenantId },
-      select: { id: true, name: true, performanceScore: true, reliabilityMetrics: true },
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id: created.id, tenantId: this.tenantId },
+      select: { id: true, poNumber: true, status: true, supplierId: true, grandTotal: true },
     })
-
-    return suppliers.map((s) => ({
-      supplierId: s.id,
-      name: s.name,
-      avgLeadTimeDays: Math.round(14 - s.performanceScore / 10),
-      reliability: s.performanceScore,
-      metrics: s.reliabilityMetrics,
-    }))
-  }
-
-  async calculateReorderPoint(productId: string) {
-    const product = await prisma.product.findFirst({
-      where: { id: productId, tenantId: this.tenantId },
-      include: { stockBalances: { select: { quantityOnHand: true } } },
-    })
-    if (!product) throw new Error('Product not found')
-
-    const onHand = product.stockBalances.reduce((s, b) => s + toNumber(b.quantityOnHand), 0)
-    const reorderPoint = toNumber(product.reorderPoint)
 
     return {
-      productId: product.id,
-      name: product.name,
-      currentStock: onHand,
-      reorderPoint,
-      shouldReorder: reorderPoint > 0 && onHand <= reorderPoint,
-      suggestedOrderQty: toNumber(product.reorderQuantity) || reorderPoint * 2,
+      id: created.id,
+      poNumber: created.poNumber,
+      status: po?.status ?? 'DRAFT',
+      supplierId: po?.supplierId ?? supplierId,
+      total: toNumber(po?.grandTotal),
+      itemCount: items.length,
+    }
+  }
+
+  async receiveGoods(
+    poId: string,
+    items: Array<{ poItemIndex: number; quantityReceived: number; unitCost?: number }>,
+  ) {
+    if (!poId || !items.length) throw new Error('poId and items are required')
+    const result = await receiveGoods(poId, { items }, this.actorId)
+    return {
+      poId,
+      receiptId: result.receiptId,
+      receiptNumber: result.receiptNumber,
+      poStatus: result.poStatus,
+      receivedItems: items.length,
     }
   }
 }

@@ -24,11 +24,13 @@ const inviteSchema = z.object({
 export const POST = requirePermission(PERMISSIONS.TEAM_MANAGE)(async (request, { auth }) => {
   try {
     const body = inviteSchema.parse(await request.json())
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin
     const sent = await createInvitations(
       auth.tenantId,
       auth.userId,
       body.invites.map((i) => ({ email: i.email, role: i.role as UserRole })),
       body.message,
+      appUrl,
     )
     return NextResponse.json(apiSuccess({ sent }), { status: 201 })
   } catch (err) {
@@ -39,7 +41,8 @@ export const POST = requirePermission(PERMISSIONS.TEAM_MANAGE)(async (request, {
 export const PATCH = requirePermission(PERMISSIONS.TEAM_MANAGE)(async (request, { auth }) => {
   try {
     const body = z.object({ invitationId: z.string() }).parse(await request.json())
-    const updated = await resendInvitation(auth.tenantId, body.invitationId)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin
+    const updated = await resendInvitation(auth.tenantId, body.invitationId, appUrl)
     return NextResponse.json(
       apiSuccess({
         id: updated.id,

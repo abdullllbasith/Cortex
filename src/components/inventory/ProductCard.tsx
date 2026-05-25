@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { Package } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui'
 import { StockBadge, type StockHealth } from './StockBadge'
@@ -28,8 +29,15 @@ export function ProductCard({ product }: { product: ProductCardData }) {
         <CardBody className="p-4 space-y-3">
           <div className="aspect-square rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
             {image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt={product.name} className="h-full w-full object-cover" />
+              <Image
+                src={image}
+                alt={product.name}
+                width={320}
+                height={320}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                unoptimized
+              />
             ) : (
               <Package className="h-10 w-10 text-slate-400" />
             )}

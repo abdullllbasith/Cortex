@@ -1,0 +1,120 @@
+{
+  "triggerType": "EVENT",
+  "triggerConfig": { "eventType": "new_contact_created" },
+  "nodes": [
+    {
+      "id": "t1",
+      "type": "trigger.event",
+      "position": { "x": 0, "y": 280 },
+      "data": {
+        "label": "NEW_CONTACT_CREATED",
+        "config": { "eventType": "new_contact_created" }
+      }
+    },
+    {
+      "id": "a-filter",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 220, "y": 280 },
+      "data": { "label": "Filter LEAD contacts", "config": { "step": "filter_lead", "contactIdField": "contactId" } }
+    },
+    {
+      "id": "d-warm",
+      "type": "control.delay",
+      "position": { "x": 460, "y": 280 },
+      "data": { "label": "Wait 1 hour", "config": { "duration": 1, "unit": "hours" } }
+    },
+    {
+      "id": "a-welcome",
+      "type": "action.send_notification",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "label": "Send Welcome WhatsApp",
+        "config": {
+          "channel": "whatsapp",
+          "recipient": "{{phone}}",
+          "message": "Hi {{firstName}}, thanks for your interest in {{tenantName}}! Our team will be in touch shortly."
+        }
+      }
+    },
+    {
+      "id": "a-task",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 700, "y": 360 },
+      "data": {
+        "label": "Create Follow-up Task",
+        "config": { "step": "create_task", "contactIdField": "contactId", "ownerIdField": "ownerId" }
+      }
+    },
+    {
+      "id": "d3",
+      "type": "control.delay",
+      "position": { "x": 940, "y": 280 },
+      "data": { "label": "Wait 3 days", "config": { "duration": 3, "unit": "days" } }
+    },
+    {
+      "id": "c-activity",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 1180, "y": 280 },
+      "data": { "label": "Check Activity Logged?", "config": { "step": "check_activity", "contactIdField": "contactId" } }
+    },
+    {
+      "id": "a-escalate",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 1420, "y": 400 },
+      "data": { "label": "Escalate No Activity", "config": { "step": "escalate_no_activity", "contactIdField": "contactId", "ownerIdField": "ownerId" } }
+    },
+    {
+      "id": "d7",
+      "type": "control.delay",
+      "position": { "x": 1420, "y": 200 },
+      "data": { "label": "Wait 7 more days", "config": { "duration": 7, "unit": "days" } }
+    },
+    {
+      "id": "c-deal",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 1660, "y": 200 },
+      "data": { "label": "Open Deal Exists?", "config": { "step": "check_deal", "contactIdField": "contactId" } }
+    },
+    {
+      "id": "a-offer",
+      "type": "action.send_notification",
+      "position": { "x": 1900, "y": 120 },
+      "data": {
+        "label": "Send Offer",
+        "config": {
+          "channel": "email",
+          "recipient": "{{email}}",
+          "message": "Hi {{firstName}}, we'd love to share our product catalogue and current offers. Reply to connect with our sales team."
+        }
+      }
+    },
+    {
+      "id": "d90",
+      "type": "control.delay",
+      "position": { "x": 2140, "y": 280 },
+      "data": { "label": "Wait 90 days", "config": { "duration": 90, "unit": "days" } }
+    },
+    {
+      "id": "a-reengage",
+      "type": "action.crm_lead_workflow",
+      "position": { "x": 2380, "y": 280 },
+      "data": { "label": "Re-engagement", "config": { "step": "reengagement", "contactIdField": "contactId", "ownerIdField": "ownerId" } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a-filter" },
+    { "id": "e2", "source": "a-filter", "target": "d-warm", "sourceHandle": "true" },
+    { "id": "e3", "source": "d-warm", "target": "a-welcome" },
+    { "id": "e4", "source": "d-warm", "target": "a-task" },
+    { "id": "e5", "source": "a-welcome", "target": "d3" },
+    { "id": "e6", "source": "a-task", "target": "d3" },
+    { "id": "e7", "source": "d3", "target": "c-activity" },
+    { "id": "e8", "source": "c-activity", "target": "a-escalate", "sourceHandle": "false" },
+    { "id": "e9", "source": "c-activity", "target": "d7", "sourceHandle": "true" },
+    { "id": "e10", "source": "d7", "target": "c-deal" },
+    { "id": "e11", "source": "c-deal", "target": "a-offer", "sourceHandle": "false" },
+    { "id": "e12", "source": "a-offer", "target": "d90" },
+    { "id": "e13", "source": "a-escalate", "target": "d90" },
+    { "id": "e14", "source": "d90", "target": "a-reengage" }
+  ]
+}

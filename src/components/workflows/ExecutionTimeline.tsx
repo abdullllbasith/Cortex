@@ -32,10 +32,25 @@ interface ExecutionTimelineProps {
   onRefresh?: () => void
 }
 
+function normalizeStatus(status: string): 'success' | 'failed' | 'running' {
+  const s = status.toLowerCase()
+  if (s === 'completed' || s === 'success') return 'success'
+  if (s === 'failed' || s === 'cancelled') return 'failed'
+  return 'running'
+}
+
 function statusIcon(status: string) {
-  if (status === 'COMPLETED') return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-  if (status === 'FAILED') return <XCircle className="h-4 w-4 text-red-500" />
+  const kind = normalizeStatus(status)
+  if (kind === 'success') return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+  if (kind === 'failed') return <XCircle className="h-4 w-4 text-red-500" />
   return <Clock className="h-4 w-4 text-amber-500" />
+}
+
+function statusBadgeVariant(status: string): 'success' | 'danger' | 'warning' {
+  const kind = normalizeStatus(status)
+  if (kind === 'success') return 'success'
+  if (kind === 'failed') return 'danger'
+  return 'warning'
 }
 
 function slackErrorHint(message: string | null | undefined): string | null {
@@ -48,7 +63,7 @@ function executionSummary(exec: Execution): string | null {
   if (!nodes.length) return null
   const completed = nodes.filter((n) => n.status === 'COMPLETED').length
   const failed = nodes.find((n) => n.status === 'FAILED')
-  if (exec.status === 'COMPLETED') return `${completed}/${nodes.length} steps completed`
+  if (normalizeStatus(exec.status) === 'success') return `${completed}/${nodes.length} steps completed`
   if (failed) {
     return `${completed}/${nodes.length} steps completed · failed at ${failed.nodeId} (${failed.nodeType.replace('action.', '').replace('control.', '')})`
   }
@@ -96,7 +111,7 @@ export function ExecutionTimeline({ executions, onRefresh }: ExecutionTimelinePr
                   <p className="text-[11px] text-slate-400 mt-0.5 truncate">{executionSummary(exec)}</p>
                 )}
               </div>
-              <Badge variant={exec.status === 'COMPLETED' ? 'success' : exec.status === 'FAILED' ? 'danger' : 'warning'} size="sm">
+              <Badge variant={statusBadgeVariant(exec.status)} size="sm">
                 {exec.status}
               </Badge>
               {duration != null && <span className="text-xs text-slate-400">{duration}s</span>}
@@ -111,7 +126,7 @@ export function ExecutionTimeline({ executions, onRefresh }: ExecutionTimelinePr
                     {slackErrorHint(exec.errorMessage) && (
                       <p className="text-red-500/80">{slackErrorHint(exec.errorMessage)}</p>
                     )}
-                    {exec.status === 'FAILED' && (exec.nodeExecutions?.some((n) => n.status === 'COMPLETED')) && (
+                    {normalizeStatus(exec.status) === 'failed' && (exec.nodeExecutions?.some((n) => n.status === 'COMPLETED')) && (
                       <p className="text-slate-600 dark:text-slate-400">
                         Earlier steps (e.g. email) may still have succeeded before this failure.
                       </p>

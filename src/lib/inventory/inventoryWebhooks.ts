@@ -114,11 +114,18 @@ export function emitStockBelowReorder(
     productName: string
     sku: string
     quantityOnHand: number
+    currentStock?: number
     reorderPoint: number
+    supplierId?: string
+    leadTimeDays?: number
     suggestedOrderQty?: number
   },
 ): void {
-  emitInventoryEvent(tenantId, INVENTORY_WEBHOOK_EVENTS.STOCK_BELOW_REORDER, payload)
+  emitInventoryEvent(tenantId, INVENTORY_WEBHOOK_EVENTS.STOCK_BELOW_REORDER, {
+    ...payload,
+    currentStock: payload.currentStock ?? payload.quantityOnHand,
+    event: 'STOCK_BELOW_REORDER',
+  })
 }
 
 export function emitPOStatusChanged(

@@ -11,6 +11,7 @@ export function MfaSetupClient() {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [setupToken, setSetupToken] = useState<string | null>(null)
   const [code, setCode] = useState('')
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -45,12 +46,37 @@ export function MfaSetupClient() {
       })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Invalid code')
+      if (json.data.backupCodes?.length) {
+        setBackupCodes(json.data.backupCodes)
+        return
+      }
       router.push('/settings/security')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (backupCodes) {
+    return (
+      <Card>
+        <CardBody className="space-y-4 p-6">
+          <h1 className="font-display text-xl font-semibold">Save your backup codes</h1>
+          <p className="text-sm text-slate-500">
+            Store these codes securely. Each can be used once if you lose access to your authenticator.
+          </p>
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-4 font-mono text-sm dark:bg-slate-900">
+            {backupCodes.map((c) => (
+              <span key={c}>{c}</span>
+            ))}
+          </div>
+          <Button variant="primary" className="w-full" onClick={() => router.push('/settings/security')}>
+            I&apos;ve saved my codes
+          </Button>
+        </CardBody>
+      </Card>
+    )
   }
 
   return (

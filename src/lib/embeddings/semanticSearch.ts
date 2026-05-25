@@ -119,6 +119,39 @@ async function searchSuppliers(
   }))
 }
 
+async function searchContacts(
+  tenantId: string,
+  vectorLiteral: string,
+  topK: number,
+): Promise<SemanticSearchResult[]> {
+  const rows = await prisma.$queryRaw<Array<{
+    id: string
+    firstName: string
+    lastName: string
+    email: string | null
+    company: string | null
+    distance: number
+    embeddingStatus: string
+  }>>`
+    SELECT id, "firstName", "lastName", email, company,
+           (embedding <=> ${vectorLiteral}::vector) AS distance,
+           "embeddingStatus"
+    FROM crm_contacts
+    WHERE "tenantId" = ${tenantId} AND embedding IS NOT NULL AND "isActive" = true
+    ORDER BY embedding <=> ${vectorLiteral}::vector
+    LIMIT ${topK}
+  `
+
+  return rows.map((r) => ({
+    id: r.id,
+    entityType: 'contact' as const,
+    title: `${r.firstName} ${r.lastName}`.trim(),
+    snippet: [r.email, r.company].filter(Boolean).join(' · ') || 'CRM contact',
+    similarity: cosineSimilarityToScore(Number(r.distance)),
+    embeddingStatus: r.embeddingStatus,
+  }))
+}
+
 async function searchKnowledge(
   tenantId: string,
   vectorLiteral: string,
@@ -172,6 +205,9 @@ export async function semanticSearch(params: SemanticSearchParams): Promise<Sema
   }
   if (entityType === 'all' || entityType === 'knowledge') {
     results.push(...await searchKnowledge(tenantId, vectorLiteral, topK))
+  }
+  if (entityType === 'all' || entityType === 'contact') {
+    results.push(...await searchContacts(tenantId, vectorLiteral, topK))
   }
 
   return results.sort((a, b) => b.similarity - a.similarity).slice(0, topK)

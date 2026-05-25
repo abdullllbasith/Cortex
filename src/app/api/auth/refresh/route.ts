@@ -1,55 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateRefreshToken, issueSession, revokeSession } from '@/lib/auth/sessionService'
-import { REFRESH_COOKIE } from '@/lib/auth/jwt'
 import { verifyAccessToken } from '@/lib/auth/jwt'
-
-function setRefreshCookie(response: NextResponse, token: string) {
-  response.cookies.set(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 30 * 24 * 60 * 60,
-  })
-}
+import { setRefreshCookie } from '@/lib/auth/sessionCookies'
 
 export async function POST(request: NextRequest) {
-  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value
-  if (!refreshToken) {
-    return NextResponse.json({ success: false, error: { message: 'No refresh token' } }, { status: 401 })
-  }
+  try {
+    const refreshToken = request.cookies.get('saios_refresh')?.value
+    if (!refreshToken) {
+      return NextResponse.json({ success: false, error: { message: 'No refresh token' } }, { status: 401 })
+    }
 
-  const session = await validateRefreshToken(refreshToken)
-  if (!session || !session.user.isActive) {
-    return NextResponse.json({ success: false, error: { message: 'Session expired' } }, { status: 401 })
-  }
+    const session = await validateRefreshToken(refreshToken)
+    if (!session || !session.user.isActive) {
+      return NextResponse.json({ success: false, error: { message: 'Session expired' } }, { status: 401 })
+    }
 
-  // Rotate refresh token
-  await revokeSession(refreshToken)
-  const meta = {
-    ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
-    userAgent: request.headers.get('user-agent'),
-  }
+    await revokeSession(refreshToken)
+    const meta = {
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+      userAgent: request.headers.get('user-agent'),
+    }
 
-  const issued = await issueSession(session.userId, meta)
-  const response = NextResponse.json({
-    success: true,
-    data: {
-      accessToken: issued.accessToken,
-      permissions: issued.permissions,
-    },
-  })
-  setRefreshCookie(response, issued.refreshToken)
-  return response
+    const rememberMe = session.expiresAt.getTime() - session.createdAt.getTime() > 2 * 24 * 60 * 60 * 1000
+    const issued = await issueSession(session.userId, meta, { rememberMe })
+    const response = NextResponse.json({
+      success: true,
+      data: {
+        accessToken: issued.accessToken,
+        permissions: issued.permissions,
+      },
+    })
+    setRefreshCookie(response, issued.refreshToken, rememberMe)
+    return response
+  } catch (err) {
+    console.error('[auth/refresh]', err)
+    return NextResponse.json({ success: false, error: { message: 'Token refresh failed' } }, { status: 500 })
+  }
 }
 
-/** Optional: validate current access token without refresh */
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!auth) {
-    return NextResponse.json({ success: false, error: { message: 'Unauthorized' } }, { status: 401 })
-  }
   try {
+    const auth = request.headers.get('authorization')?.replace('Bearer ', '')
+    if (!auth) {
+      return NextResponse.json({ success: false, error: { message: 'Unauthorized' } }, { status: 401 })
+    }
     const payload = await verifyAccessToken(auth)
     return NextResponse.json({ success: true, data: payload })
   } catch {

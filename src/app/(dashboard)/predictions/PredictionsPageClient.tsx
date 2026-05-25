@@ -4,11 +4,10 @@ import { useState } from 'react'
 import { ChevronDown, RefreshCw, X } from 'lucide-react'
 import { PageHeader, Button, Badge, Skeleton } from '@/components/ui'
 import {
-  SalesForecastChart,
   InventoryRiskTable,
   ChurnRiskList,
-  SupplierRiskMatrix,
 } from '@/components/predictions'
+import { LazySalesForecastChart, LazySupplierRiskMatrix } from '@/lib/lazy/components'
 import {
   useSalesPredictions,
   useInventoryPredictions,
@@ -125,7 +124,7 @@ export default function PredictionsPageClient() {
           {salesLoading ? (
             <Skeleton className="h-96 w-full rounded-xl" />
           ) : (
-            <SalesForecastChart
+            <LazySalesForecastChart
               historical={sales?.historical ?? []}
               forecast={sales?.forecast ?? []}
               trendPct={sales?.trendPct}
@@ -150,7 +149,7 @@ export default function PredictionsPageClient() {
         </CollapsiblePanel>
 
         <CollapsiblePanel title="Supplier Risk">
-          <SupplierRiskMatrix items={suppliers?.items ?? []} loading={supLoading} />
+          <LazySupplierRiskMatrix items={suppliers?.items ?? []} loading={supLoading} />
         </CollapsiblePanel>
       </div>
     </div>

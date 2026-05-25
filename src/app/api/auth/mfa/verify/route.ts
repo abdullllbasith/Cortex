@@ -5,25 +5,24 @@ import { apiSuccess } from '@/lib/knowledge/response'
 import { prisma } from '@/lib/db/prisma'
 import { decryptField, encryptField } from '@/lib/security/encryption'
 import { issueSession } from '@/lib/auth/sessionService'
-import { REFRESH_COOKIE } from '@/lib/auth/jwt'
 import { verifyAccessToken } from '@/lib/auth/jwt'
 import { logSecurityEvent } from '@/lib/audit/securityMonitor'
 import { extractRequestMeta } from '@/lib/audit/auditLogger'
+import {
+  setRefreshCookie,
+  clearMfaPendingCookie,
+} from '@/lib/auth/sessionCookies'
+import {
+  generatePlainBackupCodes,
+  storeBackupCodeHashes,
+  verifyAndConsumeBackupCode,
+} from '@/lib/auth/mfaBackupCodes'
 
 const schema = z.object({
-  code: z.string().length(6),
+  code: z.string().min(6).max(12),
   setupToken: z.string().optional(),
+  rememberMe: z.boolean().optional().default(true),
 })
-
-function setRefreshCookie(response: NextResponse, token: string) {
-  response.cookies.set(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 30 * 24 * 60 * 60,
-  })
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,12 +51,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: { message: 'Invalid setup token' } }, { status: 400 })
     }
 
-    const result = verifySync({ token: body.code, secret })
-    if (!result.valid) {
+    let verified = false
+    let usedBackupCode = false
+
+    if (body.code.length === 6) {
+      const result = verifySync({ token: body.code, secret })
+      verified = result.valid
+    } else {
+      verified = await verifyAndConsumeBackupCode(user.id, body.code)
+      usedBackupCode = verified
+    }
+
+    if (!verified) {
       return NextResponse.json({ success: false, error: { message: 'Invalid code' } }, { status: 401 })
     }
 
+    let backupCodes: string[] | undefined
+
     if (!user.mfaEnabled && body.setupToken) {
+      backupCodes = generatePlainBackupCodes()
+      await storeBackupCodeHashes(user.id, backupCodes)
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -75,23 +88,26 @@ export async function POST(request: NextRequest) {
 
     const meta = extractRequestMeta(request)
 
-    if (payload.mfaPending || user.mfaEnabled) {
-      const session = await issueSession(user.id, meta)
+    if (payload.mfaPending || user.mfaEnabled || usedBackupCode) {
+      const session = await issueSession(user.id, meta, { rememberMe: body.rememberMe })
       const response = NextResponse.json(apiSuccess({
         accessToken: session.accessToken,
         permissions: session.permissions,
+        backupCodes,
+        usedBackupCode,
       }))
-      setRefreshCookie(response, session.refreshToken)
+      setRefreshCookie(response, session.refreshToken, body.rememberMe)
+      clearMfaPendingCookie(response)
       await logSecurityEvent({
         tenantId: payload.tenantId,
         userId: user.id,
-        eventType: 'LOGIN_SUCCESS',
+        eventType: usedBackupCode ? 'MFA_BACKUP_CODE_USED' : 'LOGIN_SUCCESS',
         ipAddress: meta.ipAddress,
       })
       return response
     }
 
-    return NextResponse.json(apiSuccess({ verified: true }))
+    return NextResponse.json(apiSuccess({ verified: true, backupCodes }))
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: { message: 'Invalid code format' } }, { status: 400 })

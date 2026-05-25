@@ -33,6 +33,26 @@ export interface TransferLineItem {
   unitCost?: number
 }
 
+/** Parse StockTransfer.items JSON from Prisma into typed line items. */
+export function parseTransferLineItems(raw: unknown): TransferLineItem[] {
+  if (!Array.isArray(raw)) return []
+  const items: TransferLineItem[] = []
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const r = row as Record<string, unknown>
+    const productId = typeof r.productId === 'string' ? r.productId : ''
+    const quantity = typeof r.quantity === 'number' ? r.quantity : Number(r.quantity)
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) continue
+    items.push({
+      productId,
+      variantId: typeof r.variantId === 'string' ? r.variantId : null,
+      quantity,
+      unitCost: typeof r.unitCost === 'number' ? r.unitCost : undefined,
+    })
+  }
+  return items
+}
+
 export interface ValuationLine {
   productId: string
   variantId: string | null

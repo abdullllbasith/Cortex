@@ -296,6 +296,10 @@ export class WorkflowEngine {
         branchByNode.set(node.id, result.branch === 'true' ? 'true' : 'false')
         const inactive = result.branch === 'true' ? 'false' : 'true'
         this.markBranchSkipped(node.id, inactive, edges, skipped)
+      } else if (result.branch === 'true' || result.branch === 'false') {
+        branchByNode.set(node.id, result.branch)
+        const inactive = result.branch === 'true' ? 'false' : 'true'
+        this.markBranchSkipped(node.id, inactive, edges, skipped)
       }
 
       nodeOutputs.set(node.id, result.outputData)

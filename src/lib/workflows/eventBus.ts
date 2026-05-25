@@ -8,6 +8,17 @@ export type SaiosEventType =
   | 'stock_level_changed'
   | 'stock_below_reorder'
   | 'po_status_changed'
+  | 'deal_lost'
+  | 'new_contact_created'
+  | 'deal_won'
+  | 'follow_up_due'
+  | 'invoice_sent'
+  | 'invoice_overdue'
+  | 'bill_overdue'
+  | 'order_confirmed'
+  | 'order_delivered'
+  | 'new_employee_joined'
+  | 'goods_received'
 
 export interface SaiosEventPayload {
   tenantId: string

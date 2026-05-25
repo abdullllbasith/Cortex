@@ -2,10 +2,12 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { applyEdgeRateLimit, classifyRateLimitRoute } from '@/lib/security/edgeRateLimiter'
 import {
   checkIpAllowlist,
+  getAdminTokenFromRequest,
   getClientIp,
   isAdminPageRoute,
   isAdminLoginRoute,
-} from '@/middleware/adminAuth'
+} from '@/middleware/adminAuthEdge'
+import { MFA_PENDING_COOKIE } from '@/lib/auth/sessionCookies'
 
 const PUBLIC_PATHS = [
   '/login',
@@ -14,7 +16,6 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/invite',
   '/mfa',
-  '/',
   '/pricing',
   '/about',
 ]
@@ -79,6 +80,34 @@ function applySecurityHeaders(response: NextResponse, request: NextRequest): Nex
   return response
 }
 
+async function getSupabaseUser(request: NextRequest, response: NextResponse) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+  if (!url || !anonKey) return { user: null, response }
+
+  const { createServerClient } = await import('@supabase/ssr')
+  let mutableResponse = response
+
+  const supabase = createServerClient(url, anonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        mutableResponse = NextResponse.next({ request })
+        applySecurityHeaders(mutableResponse, request)
+        cookiesToSet.forEach(({ name, value, options }) =>
+          mutableResponse.cookies.set(name, value, options),
+        )
+      },
+    },
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  return { user, response: mutableResponse }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -109,7 +138,6 @@ export async function middleware(request: NextRequest) {
       return response
     }
 
-    const { getAdminTokenFromRequest } = await import('@/middleware/adminAuth')
     const { verifyAdminAccessToken } = await import('@/lib/auth/adminJwt')
     const adminToken = getAdminTokenFromRequest(request)
 
@@ -132,44 +160,44 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Skip auth gate for public routes, API routes, and dev mode
-  if (isPublicPath(pathname) || pathname.startsWith('/api/')) {
+  // Skip auth gate for API routes and dev mode
+  if (pathname.startsWith('/api/')) {
     return response
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
-
-  if (!url || !anonKey || process.env.AUTH_DEV_MODE === 'true') {
+  if (process.env.AUTH_DEV_MODE === 'true') {
     return response
   }
 
-  // Lazy-load Supabase only when needed (keeps Edge bundle smaller)
-  const { createServerClient } = await import('@supabase/ssr')
+  const { user, response: supabaseResponse } = await getSupabaseUser(request, response)
+  response = supabaseResponse
 
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        response = NextResponse.next({ request })
-        applySecurityHeaders(response, request)
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        )
-      },
-    },
-  })
+  // Landing: redirect authenticated users to dashboard
+  if (pathname === '/' && user) {
+    const dash = request.nextUrl.clone()
+    dash.pathname = '/dashboard'
+    return NextResponse.redirect(dash)
+  }
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // Public routes (including marketing landing for guests)
+  if (isPublicPath(pathname)) {
+    return response
+  }
 
   if (!user) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
     loginUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // MFA pending — block protected routes until verified
+  const mfaPending = request.cookies.get(MFA_PENDING_COOKIE)?.value === '1'
+  if (mfaPending && !pathname.startsWith('/mfa')) {
+    const mfaUrl = request.nextUrl.clone()
+    mfaUrl.pathname = '/mfa/verify'
+    mfaUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(mfaUrl)
   }
 
   return response

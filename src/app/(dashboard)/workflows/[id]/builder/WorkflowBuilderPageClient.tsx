@@ -2,7 +2,7 @@
 
 import { PageHeader } from '@/components/ui'
 import { ResponsiveContainer } from '@/components/layout/ResponsiveContainer'
-import { WorkflowBuilder } from '@/components/workflows/WorkflowBuilder'
+import { LazyWorkflowBuilder } from '@/lib/lazy/components'
 
 export default function WorkflowBuilderPageClient({ id }: { id: string }) {
   return (
@@ -17,7 +17,7 @@ export default function WorkflowBuilderPageClient({ id }: { id: string }) {
         ]}
       />
       <ResponsiveContainer className="flex-1 py-4">
-        <WorkflowBuilder workflowId={id} />
+        <LazyWorkflowBuilder workflowId={id} />
       </ResponsiveContainer>
     </div>
   )

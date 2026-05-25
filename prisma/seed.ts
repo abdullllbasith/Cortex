@@ -1,5 +1,14 @@
 import { PrismaClient, TenantPlan, BusinessKnowledgeType } from '@prisma/client'
 import { createHash } from 'crypto'
+import { seedPipelinesForTenant } from '../src/lib/crm/pipelineService'
+import { seedCrmEventWorkflowsForTenant } from '../src/lib/crm/crmWorkflowSeed'
+import { seedCrossModuleWorkflowsForTenant } from '../src/lib/workflows/crossModuleWorkflowSeed'
+import { seedDefaultAccounts } from '../src/lib/finance/chartOfAccountsService'
+import {
+  seedCrmContactsForTenant,
+  seedDashboardActivity,
+  seedHrForTenant,
+} from './seedHr'
 
 const prisma = new PrismaClient()
 
@@ -11,6 +20,10 @@ const TENANTS = [
 
 function hash(content: string) {
   return createHash('sha256').update(content).digest('hex')
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
 async function main() {
@@ -25,8 +38,11 @@ async function main() {
 
     console.log(`  ✓ Tenant: ${tenant.name}`)
 
+    await seedPipelinesForTenant(tenant.id)
+    await seedDefaultAccounts(tenant.id, { currency: 'USD' })
+
     // Owner user for dev auth (Module 08)
-    await prisma.user.upsert({
+    const owner = await prisma.user.upsert({
       where: { supabaseId: `dev-owner-${tenant.slug}` },
       update: { fullName: `${tenant.name} Owner`, role: 'OWNER', isActive: true },
       create: {
@@ -37,6 +53,12 @@ async function main() {
         role: 'OWNER',
       },
     })
+
+    await seedCrmContactsForTenant(prisma, tenant.id, owner.id)
+    await seedCrmEventWorkflowsForTenant(tenant.id, owner.id)
+    await seedCrossModuleWorkflowsForTenant(tenant.id, owner.id)
+    await seedHrForTenant(prisma, tenant.id, owner.id, tenant.slug)
+    await seedDashboardActivity(prisma, tenant.id, owner.id)
 
     // Customers
     const customers = [
@@ -83,10 +105,21 @@ async function main() {
 
     for (const p of products) {
       const content = `${p.name} ${JSON.stringify(p.catalog)}`
+      const sku = p.catalog.sku
+      const sellingPrice = p.pricingHistory[0]?.price ?? 0
       await prisma.product.create({
         data: {
           tenantId: tenant.id,
-          ...p,
+          sku,
+          slug: slugify(p.name),
+          name: p.name,
+          description: p.catalog.description,
+          catalog: p.catalog,
+          inventoryLevel: p.inventoryLevel,
+          supplierInfo: p.supplierInfo,
+          pricingHistory: p.pricingHistory,
+          sellingPrice,
+          costPrice: Math.round(sellingPrice * 0.6 * 100) / 100,
           embeddingContentHash: hash(content),
         },
       })
@@ -129,7 +162,8 @@ async function main() {
       })
     }
 
-    // Analytics events (Module 04)
+    // Analytics events (Module 04) — link sales to CRM contacts when available
+    const tenantContacts = await prisma.crmContact.findMany({ where: { tenantId: tenant.id }, take: 3 })
     const tenantCustomers = await prisma.customer.findMany({ where: { tenantId: tenant.id }, take: 3 })
     const tenantProducts = await prisma.product.findMany({ where: { tenantId: tenant.id }, take: 3 })
     const tenantSuppliers = await prisma.supplier.findMany({ where: { tenantId: tenant.id }, take: 3 })
@@ -144,8 +178,9 @@ async function main() {
 
       for (let i = 0; i < 3; i++) {
         const product = tenantProducts[i % tenantProducts.length]
+        const contact = tenantContacts[i % tenantContacts.length]
         const customer = tenantCustomers[i % tenantCustomers.length]
-        if (!product || !customer) continue
+        if (!product) continue
 
         const qty = 1 + (day + i) % 5
         const unitPrice = 500 + i * 300 + (day % 7) * 50
@@ -156,7 +191,7 @@ async function main() {
           data: {
             tenantId: tenant.id,
             productId: product.id,
-            customerId: customer.id,
+            customerId: contact?.id ?? customer?.id ?? null,
             quantity: qty,
             revenue,
             cost,
@@ -204,7 +239,7 @@ async function main() {
     }
   }
 
-  console.log('✅ Seed complete — 3 tenants with customers, products, suppliers, documents, and analytics events.')
+  console.log('✅ Seed complete — tenants, CRM, HR, finance, dashboard activity, and analytics events.')
 }
 
 main()

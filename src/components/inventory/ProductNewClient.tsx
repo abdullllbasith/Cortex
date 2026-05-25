@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader, Button, Card, CardBody, Input, toast } from '@/components/ui'
 import Link from 'next/link'
+import { BarcodeField } from '@/components/inventory/BarcodeField'
 
 const selectClass =
   'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900'
@@ -61,11 +62,16 @@ export function ProductNewClient() {
       <div className="flex-1 p-6">
         <Card className="max-w-2xl">
           <CardBody className="p-6 space-y-4">
+            <div>
+              <BarcodeField
+                value={form.barcode}
+                onChange={(barcode) => setForm((f) => ({ ...f, barcode }))}
+              />
+            </div>
             {(
               [
                 ['name', 'Name', 'text'],
                 ['sku', 'SKU (optional)', 'text'],
-                ['barcode', 'Barcode', 'text'],
                 ['costPrice', 'Cost Price', 'number'],
                 ['sellingPrice', 'Selling Price', 'number'],
                 ['reorderPoint', 'Reorder Point', 'number'],

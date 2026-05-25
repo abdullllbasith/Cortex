@@ -2,7 +2,8 @@ import { SignJWT, jwtVerify } from 'jose'
 import type { Permission } from '@/lib/auth/permissions'
 
 const ACCESS_TTL_SECONDS = 15 * 60 // 15 minutes
-const REFRESH_TTL_DAYS = 30
+export const REFRESH_TTL_DAYS = 30
+export const REFRESH_TTL_SESSION_DAYS = 1 // when "Remember me" is unchecked
 
 export interface AccessTokenPayload {
   sub: string
@@ -48,10 +49,15 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenPaylo
   }
 }
 
-export function refreshTokenExpiresAt(): Date {
+export function refreshTokenExpiresAt(rememberMe = true): Date {
   const d = new Date()
-  d.setDate(d.getDate() + REFRESH_TTL_DAYS)
+  d.setDate(d.getDate() + (rememberMe ? REFRESH_TTL_DAYS : REFRESH_TTL_SESSION_DAYS))
   return d
+}
+
+export function refreshCookieMaxAge(rememberMe = true): number {
+  const days = rememberMe ? REFRESH_TTL_DAYS : REFRESH_TTL_SESSION_DAYS
+  return days * 24 * 60 * 60
 }
 
 export const REFRESH_COOKIE = 'saios_refresh'

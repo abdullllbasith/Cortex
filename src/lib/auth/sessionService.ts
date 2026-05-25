@@ -29,8 +29,9 @@ export interface SessionIssueResult {
 export async function issueSession(
   userId: string,
   meta: { ipAddress?: string | null; userAgent?: string | null },
-  options?: { mfaPending?: boolean },
+  options?: { mfaPending?: boolean; rememberMe?: boolean },
 ): Promise<SessionIssueResult> {
+  const rememberMe = options?.rememberMe ?? true
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     include: { tenant: true },
@@ -45,7 +46,7 @@ export async function issueSession(
       sessionToken: hashToken(refreshToken),
       ipAddress: meta.ipAddress ?? null,
       userAgent: meta.userAgent ?? null,
-      expiresAt: refreshTokenExpiresAt(),
+      expiresAt: refreshTokenExpiresAt(rememberMe),
     },
   })
 

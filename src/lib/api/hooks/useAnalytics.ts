@@ -9,6 +9,8 @@ import type {
   CustomerAnalyticsData,
   InventoryAnalyticsData,
   SupplierAnalyticsData,
+  FinanceAnalyticsData,
+  HrAnalyticsData,
 } from '@/lib/analytics/types'
 
 const REFRESH_MS = 60_000
@@ -90,10 +92,80 @@ export function useCustomerAnalytics(params?: AnalyticsQueryParams) {
   )
 }
 
-export function useInventoryAnalytics() {
+export function useInventoryAnalytics(params?: Pick<AnalyticsQueryParams, 'period' | 'startDate' | 'endDate'>) {
   return useSWR<InventoryAnalyticsData>(
-    ['analytics', 'inventory'],
-    () => fetchAnalytics('/analytics/inventory'),
+    queryKey('inventory', params),
+    () => fetchAnalytics('/analytics/inventory', {
+      period: params?.period,
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+    }),
+    { refreshInterval: REFRESH_MS },
+  )
+}
+
+export interface FinanceModuleSummary {
+  monthlyRevenue: number
+  monthlyExpenses: number
+  netProfit: number
+  grossMargin: number
+  arTotal: number
+  apTotal: number
+  cashBalance: number
+  details?: FinanceAnalyticsData
+}
+
+export interface HrModuleSummary {
+  totalEmployees: number
+  onLeaveToday: number
+  attendanceRateThisMonth: number
+  pendingLeaveRequests: number
+  nextPayrollDate: string
+  totalPayrollCost: number
+  details?: HrAnalyticsData
+}
+
+export interface CrmModuleSummary {
+  totalContacts: number
+  openDeals: number
+  pipelineValue: number
+  wonThisMonth: number
+  conversionRate: number
+  avgDealSize: number
+  overdueFollowUps: number
+  details?: Record<string, unknown>
+}
+
+export function useFinanceAnalytics(params?: AnalyticsQueryParams) {
+  return useSWR<FinanceModuleSummary>(
+    queryKey('finance', params),
+    () => fetchAnalytics('/analytics/finance', {
+      period: params?.period,
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+      details: 'true',
+    }),
+    { refreshInterval: REFRESH_MS },
+  )
+}
+
+export function useHrAnalytics(params?: AnalyticsQueryParams) {
+  return useSWR<HrModuleSummary>(
+    queryKey('hr', params),
+    () => fetchAnalytics('/analytics/hr', {
+      period: params?.period,
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+      details: 'true',
+    }),
+    { refreshInterval: REFRESH_MS },
+  )
+}
+
+export function useCrmAnalytics() {
+  return useSWR<CrmModuleSummary>(
+    ['analytics', 'crm'],
+    () => fetchAnalytics('/analytics/crm', { details: 'true' }),
     { refreshInterval: REFRESH_MS },
   )
 }

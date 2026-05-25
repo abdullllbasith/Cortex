@@ -1,4 +1,3 @@
-import { CustomerEventType } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { addDays, startOfDay } from '../utils'
 
@@ -17,90 +16,79 @@ export interface CustomerFeatureVector {
   churnIndicator: number
 }
 
-function customerName(profile: unknown): string {
-  const p = profile as { name?: string; company?: string }
-  return p.name ?? p.company ?? 'Unknown'
-}
-
-function purchaseAmount(metadata: unknown, type: CustomerEventType): number {
-  if (type !== CustomerEventType.PURCHASE) return 0
-  const m = metadata as { amount?: number; revenue?: number }
-  return m.amount ?? m.revenue ?? 0
-}
-
 export async function extractCustomerFeatures(tenantId: string): Promise<CustomerFeatureVector[]> {
   const now = startOfDay(new Date())
   const windowStart = addDays(now, -WINDOW_DAYS)
   const priorStart = addDays(windowStart, -WINDOW_DAYS)
 
-  const customers = await prisma.customer.findMany({
-    where: { tenantId },
-    select: { id: true, profile: true },
-  })
-
-  const events = await prisma.customerEvent.findMany({
+  const events = await prisma.salesEvent.findMany({
     where: {
       tenantId,
+      customerId: { not: null },
       timestamp: { gte: priorStart },
     },
     orderBy: { timestamp: 'asc' },
   })
 
+  const contactIds = [...new Set(events.map((e) => e.customerId).filter(Boolean) as string[])]
+  const contacts = contactIds.length
+    ? await prisma.crmContact.findMany({
+        where: { tenantId, id: { in: contactIds } },
+        select: { id: true, firstName: true, lastName: true, company: true },
+      })
+    : []
+  const contactNames = new Map(
+    contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim() || c.company || 'Contact']),
+  )
+
   const byCustomer = new Map<string, typeof events>()
   for (const e of events) {
+    if (!e.customerId) continue
     const list = byCustomer.get(e.customerId) ?? []
     list.push(e)
     byCustomer.set(e.customerId, list)
   }
 
-  return customers.map((c) => {
-    const evts = byCustomer.get(c.id) ?? []
-    const purchases = evts.filter((e) => e.type === CustomerEventType.PURCHASE)
-    const recentPurchases = purchases.filter((e) => e.timestamp >= windowStart)
-    const priorPurchases = purchases.filter((e) => e.timestamp >= priorStart && e.timestamp < windowStart)
+  return contactIds.map((customerId) => {
+    const evts = byCustomer.get(customerId) ?? []
+    const recent = evts.filter((e) => e.timestamp >= windowStart)
+    const prior = evts.filter((e) => e.timestamp >= priorStart && e.timestamp < windowStart)
 
-    const lastPurchase = purchases[purchases.length - 1]
+    const lastPurchase = evts[evts.length - 1]
     const recencyDays = lastPurchase
       ? Math.floor((now.getTime() - lastPurchase.timestamp.getTime()) / 86400000)
       : 999
 
-    const frequency90d = recentPurchases.length
-    const monetary90d = recentPurchases.reduce((s, e) => s + purchaseAmount(e.metadata, e.type), 0)
+    const frequency90d = recent.length
+    const monetary90d = recent.reduce((s, e) => s + e.revenue, 0)
 
-    const priorFreq = priorPurchases.length || 1
+    const priorFreq = prior.length || 1
     const frequencyDrop = Math.max(0, (priorFreq - frequency90d) / priorFreq)
 
     const gaps: number[] = []
-    for (let i = 1; i < purchases.length; i++) {
-      gaps.push(
-        (purchases[i]!.timestamp.getTime() - purchases[i - 1]!.timestamp.getTime()) / 86400000,
-      )
+    for (let i = 1; i < evts.length; i++) {
+      gaps.push((evts[i]!.timestamp.getTime() - evts[i - 1]!.timestamp.getTime()) / 86400000)
     }
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 90
     const gapRatio = avgGap > 0 ? recencyDays / avgGap : recencyDays / 90
-
-    const complaintCount = evts.filter((e) => e.type === CustomerEventType.COMPLAINT).length
 
     const rScore = recencyDays <= 30 ? 5 : recencyDays <= 60 ? 3 : 1
     const fScore = frequency90d >= 5 ? 5 : frequency90d >= 2 ? 3 : 1
     const mScore = monetary90d >= 10000 ? 5 : monetary90d >= 2000 ? 3 : 1
     const rfmScore = rScore + fScore + mScore
 
-    const churnIndicator = Math.min(
-      1,
-      gapRatio * 0.4 + frequencyDrop * 0.35 + Math.min(complaintCount / 3, 1) * 0.25,
-    )
+    const churnIndicator = Math.min(1, gapRatio * 0.45 + frequencyDrop * 0.55)
 
     return {
-      customerId: c.id,
-      customerName: customerName(c.profile),
+      customerId,
+      customerName: contactNames.get(customerId) ?? 'Contact',
       recencyDays,
       frequency90d,
       monetary90d,
       rfmScore,
       gapRatio,
       frequencyDrop,
-      complaintCount,
+      complaintCount: 0,
       churnIndicator,
     }
   })

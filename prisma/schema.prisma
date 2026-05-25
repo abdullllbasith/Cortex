@@ -147,6 +147,21 @@ enum SupplierEventType {
   RETURN
 }
 
+enum SupplierType {
+  MANUFACTURER
+  DISTRIBUTOR
+  WHOLESALER
+  SERVICE_PROVIDER
+}
+
+enum PaymentTerms {
+  IMMEDIATE
+  NET15
+  NET30
+  NET45
+  NET60
+}
+
 enum AnalyticsSnapshotType {
   SALES_HOURLY
   SALES_DAILY
@@ -329,6 +344,9 @@ model Tenant {
   customers            Customer[]
   products             Product[]
   suppliers            Supplier[]
+  supplierContacts     SupplierContact[]
+  supplierProducts     SupplierProduct[]
+  reorderSnoozes       ReorderSnooze[]
   businessKnowledge    BusinessKnowledge[]
   conversationSessions ConversationSession[]
   channelConnections   ChannelConnection[]
@@ -370,6 +388,33 @@ model Tenant {
   purchaseOrders     PurchaseOrder[]
   goodsReceipts      GoodsReceipt[]
   poApprovalRules    POApprovalRule[]
+  crmContacts        CrmContact[]
+  crmCompanies       CrmCompany[]
+  crmDeals           CrmDeal[]
+  crmPipelines       CrmPipeline[]
+  crmActivities      CrmActivity[]
+  quotes             Quote[]
+  salesOrders        SalesOrder[]
+  orderFulfillments  OrderFulfillment[]
+  financeAccounts    Account[]
+  journalEntries     JournalEntry[]
+  taxRates           TaxRate[]
+  fiscalPeriods      FiscalPeriod[]
+  invoices           Invoice[]
+  financePayments    Payment[]
+  bills              Bill[]
+  billPayments       BillPayment[]
+  departments        Department[]
+  designations       Designation[]
+  employees          Employee[]
+  leaveTypes         LeaveType[]
+  leaveAllocations   LeaveAllocation[]
+  leaveRequests    LeaveRequest[]
+  attendances        Attendance[]
+  salaryStructures   SalaryStructure[]
+  employeeSalaries   EmployeeSalary[]
+  payrollRuns        PayrollRun[]
+  payrollSlips       PayrollSlip[]
 
   @@map("tenants")
 }
@@ -408,6 +453,7 @@ model Category {
   name        String
   slug        String
   parentId    String?
+  sortOrder   Int      @default(0)
   description String?  @db.Text
   imageUrl    String?
   createdAt   DateTime @default(now())
@@ -463,6 +509,7 @@ model Product {
   tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category      Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   supplier      Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierLinks SupplierProduct[]
   variants      ProductVariant[]
   stockLedger   StockLedger[]
   stockBalances StockBalance[]
@@ -528,6 +575,7 @@ model Warehouse {
   transfersTo      StockTransfer[] @relation("TransferTo")
   purchaseOrders   PurchaseOrder[]
   goodsReceipts    GoodsReceipt[]
+  orderFulfillments OrderFulfillment[]
 
   @@unique([tenantId, code])
   @@index([tenantId, isActive])
@@ -672,6 +720,7 @@ model PurchaseOrder {
   approver    User?         @relation("POApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   creator     User?         @relation("POCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   receipts    GoodsReceipt[]
+  bills       Bill[]
 
   @@unique([tenantId, poNumber])
   @@index([tenantId, status])
@@ -727,7 +776,23 @@ model POApprovalRule {
 model Supplier {
   id                   String          @id @default(cuid())
   tenantId             String
+  code                 String          @default("")
   name                 String
+  type                 SupplierType    @default(DISTRIBUTOR)
+  contactName          String?
+  email                String?
+  phone                String?
+  mobile               String?
+  website              String?
+  address              Json            @default("{}")
+  paymentTerms         PaymentTerms    @default(NET30)
+  currency             String          @default("USD")
+  taxNumber            String?
+  bankDetailsEnc       String?         @db.Text
+  creditLimit          Decimal?        @db.Decimal(14, 2)
+  isActive             Boolean         @default(true)
+  notes                String?         @db.Text
+  rating               Decimal?        @db.Decimal(3, 2)
   performanceScore     Float           @default(0)
   deliveryHistory      Json            @default("[]")
   reliabilityMetrics   Json            @default("{}")
@@ -740,14 +805,80 @@ model Supplier {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  products     Product[]
-  purchaseOrders PurchaseOrder[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products         Product[]
+  purchaseOrders   PurchaseOrder[]
+  contacts         SupplierContact[]
+  supplierProducts SupplierProduct[]
+  bills            Bill[]
+  billPayments     BillPayment[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, name])
+  @@index([tenantId, isActive])
+  @@index([tenantId, type])
   @@index([tenantId, embeddingStatus])
   @@map("suppliers")
+}
+
+model SupplierContact {
+  id          String   @id @default(cuid())
+  tenantId    String
+  supplierId  String
+  name        String
+  email       String?
+  phone       String?
+  designation String?
+  isPrimary   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, supplierId])
+  @@index([tenantId, supplierId, isPrimary])
+  @@map("supplier_contacts")
+}
+
+model SupplierProduct {
+  id            String    @id @default(cuid())
+  tenantId      String
+  supplierId    String
+  productId     String
+  supplierSku   String?
+  unitCost      Decimal   @default(0) @db.Decimal(14, 4)
+  minOrderQty   Int       @default(1)
+  leadTimeDays  Int       @default(7)
+  isPreferred   Boolean   @default(false)
+  lastPriceDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, supplierId, productId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, productId])
+  @@map("supplier_products")
+}
+
+model ReorderSnooze {
+  id           String   @id @default(cuid())
+  tenantId     String
+  productId    String
+  snoozedUntil DateTime
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, productId])
+  @@index([tenantId, snoozedUntil])
+  @@map("reorder_snoozes")
 }
 
 // ── BusinessKnowledge ────────────────────────────────────────────────────────
@@ -1187,6 +1318,1011 @@ model WorkflowTemplate {
   @@map("workflow_templates")
 }
 
+// ── Module 13: CRM ───────────────────────────────────────────────────────────
+
+enum ContactType {
+  CUSTOMER
+  LEAD
+  PROSPECT
+}
+
+enum ContactSource {
+  MANUAL
+  IMPORT
+  WEBSITE
+  REFERRAL
+  WHATSAPP
+  SOCIAL
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+  ON_HOLD
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  TASK
+  WHATSAPP
+  DEMO
+}
+
+model CrmContact {
+  id               String          @id @default(cuid())
+  tenantId         String
+  type             ContactType     @default(LEAD)
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  mobile           String?
+  company          String?
+  jobTitle         String?
+  source           ContactSource   @default(MANUAL)
+  ownerId          String?
+  tags             String[]        @default([])
+  notes            String?         @db.Text
+  address          Json            @default("{}")
+  customFields     Json            @default("{}")
+  doNotContact     Boolean         @default(false)
+  isActive         Boolean         @default(true)
+  lastContactedAt  DateTime?
+  nextFollowUpAt   DateTime?
+  embedding        Unsupported("vector(1536)")?
+  embeddingStatus  EmbeddingStatus @default(PENDING)
+  embeddingContentHash String?
+  embeddingUpdatedAt   DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner     User?            @relation("CrmContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  companies ContactCompany[]
+  deals     CrmDeal[]
+  activities CrmActivity[]
+  quotes    Quote[]
+  orders    SalesOrder[]
+  invoices  Invoice[]
+  payments  Payment[]
+
+  @@index([tenantId, email])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, type])
+  @@index([tenantId, nextFollowUpAt])
+  @@index([tenantId, embeddingStatus])
+  @@map("crm_contacts")
+}
+
+model CrmCompany {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  industry       String?
+  size           String?
+  website        String?
+  phone          String?
+  address        Json     @default("{}")
+  ownerId        String?
+  tags           String[] @default([])
+  annualRevenue  Decimal? @db.Decimal(16, 2)
+  employeeCount  Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User?            @relation("CrmCompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts   ContactCompany[]
+  deals      CrmDeal[]
+  activities CrmActivity[]
+  quotes     Quote[]
+  orders     SalesOrder[]
+  invoices   Invoice[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, ownerId])
+  @@map("crm_companies")
+}
+
+model ContactCompany {
+  id        String  @id @default(cuid())
+  contactId String
+  companyId String
+  role      String?
+  isPrimary Boolean @default(false)
+
+  contact CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company CrmCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, companyId])
+  @@map("crm_contact_companies")
+}
+
+model CrmPipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isDefault Boolean  @default(false)
+  stages    Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deals  CrmDeal[]
+
+  @@index([tenantId, isDefault])
+  @@map("crm_pipelines")
+}
+
+model CrmDeal {
+  id                String     @id @default(cuid())
+  tenantId          String
+  title             String
+  contactId         String?
+  companyId         String?
+  ownerId           String?
+  pipelineId        String
+  stageId           String
+  value             Decimal    @default(0) @db.Decimal(16, 2)
+  currency          String     @default("USD")
+  probability       Int        @default(0)
+  expectedCloseDate DateTime?
+  status            DealStatus @default(OPEN)
+  lostReason        String?
+  wonAt             DateTime?
+  lostAt            DateTime?
+  stageEnteredAt    DateTime   @default(now())
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact  CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company  CrmCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner    User?       @relation("CrmDealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  pipeline CrmPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  activities CrmActivity[]
+  quotes     Quote[]
+
+  @@index([tenantId, pipelineId, stageId])
+  @@index([tenantId, status])
+  @@index([tenantId, ownerId])
+  @@map("crm_deals")
+}
+
+model CrmActivity {
+  id          String       @id @default(cuid())
+  tenantId    String
+  type        ActivityType
+  contactId   String?
+  dealId      String?
+  companyId   String?
+  subject     String
+  description String?      @db.Text
+  outcome     String?
+  scheduledAt DateTime?
+  completedAt DateTime?
+  duration    Int?
+  createdBy   String?
+  assignedTo  String?
+  isCompleted Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal      CrmDeal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company   CrmCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator   User?       @relation("CrmActivityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignee  User?       @relation("CrmActivityAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, contactId])
+  @@index([tenantId, dealId])
+  @@index([tenantId, scheduledAt])
+  @@map("crm_activities")
+}
+
+// ── Module 14: Sales Orders ──────────────────────────────────────────────────
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  PROCESSING
+  PICKING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum FulfillmentStatus {
+  PENDING
+  PICKING
+  PACKED
+  SHIPPED
+  DELIVERED
+}
+
+model Quote {
+  id                 String      @id @default(cuid())
+  tenantId           String
+  quoteNumber        String
+  contactId          String?
+  companyId          String?
+  dealId             String?
+  ownerId            String?
+  status             QuoteStatus @default(DRAFT)
+  validUntil         DateTime?
+  items              Json        @default("[]")
+  subtotal           Decimal     @default(0) @db.Decimal(16, 2)
+  discountTotal      Decimal     @default(0) @db.Decimal(16, 2)
+  taxTotal           Decimal     @default(0) @db.Decimal(16, 2)
+  total              Decimal     @default(0) @db.Decimal(16, 2)
+  currency           String      @default("USD")
+  notes              String?     @db.Text
+  termsAndConditions String?     @db.Text
+  sentAt             DateTime?
+  viewedAt           DateTime?
+  acceptedAt         DateTime?
+  rejectedAt         DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company CrmCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deal    CrmDeal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  owner   User?       @relation("QuoteOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  orders  SalesOrder[]
+
+  @@unique([tenantId, quoteNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@map("quotes")
+}
+
+model SalesOrder {
+  id              String           @id @default(cuid())
+  tenantId        String
+  orderNumber     String
+  quoteId         String?
+  contactId       String?
+  companyId       String?
+  ownerId         String?
+  status          SalesOrderStatus @default(DRAFT)
+  items           Json             @default("[]")
+  subtotal        Decimal          @default(0) @db.Decimal(16, 2)
+  discountTotal   Decimal          @default(0) @db.Decimal(16, 2)
+  taxTotal        Decimal          @default(0) @db.Decimal(16, 2)
+  shippingCost    Decimal          @default(0) @db.Decimal(16, 2)
+  total           Decimal          @default(0) @db.Decimal(16, 2)
+  currency        String           @default("USD")
+  shippingAddress Json             @default("{}")
+  billingAddress  Json             @default("{}")
+  paymentStatus   PaymentStatus    @default(UNPAID)
+  notes           String?          @db.Text
+  confirmedAt     DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote        Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  contact      CrmContact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company      CrmCompany?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner        User?              @relation("SalesOrderOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  fulfillments OrderFulfillment[]
+  invoices     Invoice[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, paymentStatus])
+  @@index([tenantId, contactId])
+  @@map("sales_orders")
+}
+
+model OrderFulfillment {
+  id             String            @id @default(cuid())
+  orderId        String
+  tenantId       String
+  status         FulfillmentStatus @default(PENDING)
+  warehouseId    String?
+  items          Json              @default("[]")
+  trackingNumber String?
+  carrier        String?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  notes          String?           @db.Text
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  order     SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, orderId])
+  @@map("order_fulfillments")
+}
+
+// ── Module 15: Finance ───────────────────────────────────────────────────────
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalReferenceType {
+  INVOICE
+  BILL
+  PAYMENT
+  PAYROLL
+  ADJUSTMENT
+  OPENING
+  TRANSFER
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+enum TaxRateType {
+  SALES
+  PURCHASE
+  BOTH
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  tenantId    String
+  code        String      @db.VarChar(10)
+  name        String
+  type        AccountType
+  subtype     String?
+  parentId    String?
+  isSystem    Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  description String?     @db.Text
+  currency    String      @default("USD")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent       Account?      @relation("AccountTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Account[]     @relation("AccountTree")
+  journalLines JournalLine[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type])
+  @@index([tenantId, parentId])
+  @@map("finance_accounts")
+}
+
+model JournalEntry {
+  id            String               @id @default(cuid())
+  tenantId      String
+  entryNumber   String               @db.VarChar(20)
+  date          DateTime             @db.Date
+  description   String
+  reference     String?
+  referenceType JournalReferenceType @default(ADJUSTMENT)
+  referenceId   String?
+  status        JournalEntryStatus   @default(DRAFT)
+  postedBy      String?
+  postedAt      DateTime?
+  voidReason    String?
+  voidedBy      String?
+  voidedAt      DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  postedByUser   User?         @relation("JournalEntryPoster", fields: [postedBy], references: [id], onDelete: SetNull)
+  voidedByUser   User?         @relation("JournalEntryVoider", fields: [voidedBy], references: [id], onDelete: SetNull)
+  lines          JournalLine[]
+  payments       Payment[]
+  billPayments   BillPayment[]
+  payrollRuns    PayrollRun[]
+
+  @@unique([tenantId, entryNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String  @id @default(cuid())
+  journalEntryId String
+  accountId      String
+  description    String?
+  debit          Decimal @default(0) @db.Decimal(15, 2)
+  credit         Decimal @default(0) @db.Decimal(15, 2)
+  currency       String  @default("USD")
+  exchangeRate   Decimal @default(1) @db.Decimal(12, 6)
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+model TaxRate {
+  id        String      @id @default(cuid())
+  tenantId  String
+  name      String
+  rate      Decimal     @db.Decimal(5, 2)
+  type      TaxRateType @default(BOTH)
+  isDefault Boolean     @default(false)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("tax_rates")
+}
+
+model FiscalPeriod {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  startDate DateTime  @db.Date
+  endDate   DateTime  @db.Date
+  isClosed  Boolean   @default(false)
+  closedBy  String?
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startDate])
+  @@map("fiscal_periods")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+  CANCELLED
+}
+
+enum FinancePaymentType {
+  INVOICE_PAYMENT
+  ADVANCE
+  REFUND
+}
+
+enum FinancePaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  CHEQUE
+  CREDIT
+}
+
+model Invoice {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  invoiceNumber      String
+  contactId          String?
+  companyId          String?
+  orderId            String?
+  status             InvoiceStatus @default(DRAFT)
+  issueDate          DateTime
+  dueDate            DateTime
+  items              Json          @default("[]")
+  subtotal           Decimal       @default(0) @db.Decimal(16, 2)
+  discountTotal      Decimal       @default(0) @db.Decimal(16, 2)
+  taxTotal           Decimal       @default(0) @db.Decimal(16, 2)
+  total              Decimal       @default(0) @db.Decimal(16, 2)
+  amountPaid         Decimal       @default(0) @db.Decimal(16, 2)
+  amountDue          Decimal       @default(0) @db.Decimal(16, 2)
+  currency           String        @default("USD")
+  notes              String?       @db.Text
+  termsAndConditions String?       @db.Text
+  paidAt             DateTime?
+  sentAt             DateTime?
+  viewedAt           DateTime?
+  createdBy          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company   CrmCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  order     SalesOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  creator   User?       @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  payments  Payment[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, dueDate])
+  @@map("invoices")
+}
+
+model Payment {
+  id              String               @id @default(cuid())
+  tenantId        String
+  type            FinancePaymentType   @default(INVOICE_PAYMENT)
+  invoiceId       String?
+  contactId       String?
+  amount          Decimal              @db.Decimal(16, 2)
+  currency        String               @default("USD")
+  paymentMethod   FinancePaymentMethod @default(BANK_TRANSFER)
+  paymentDate     DateTime
+  reference       String?
+  notes           String?              @db.Text
+  journalEntryId  String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  contact      CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, paymentDate])
+  @@map("finance_payments")
+}
+
+enum BillStatus {
+  DRAFT
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Bill {
+  id               String     @id @default(cuid())
+  tenantId         String
+  billNumber       String
+  supplierId       String
+  purchaseOrderId  String?
+  status           BillStatus @default(DRAFT)
+  issueDate        DateTime
+  dueDate          DateTime
+  items            Json       @default("[]")
+  subtotal         Decimal    @default(0) @db.Decimal(16, 2)
+  taxTotal         Decimal    @default(0) @db.Decimal(16, 2)
+  total            Decimal    @default(0) @db.Decimal(16, 2)
+  amountPaid       Decimal    @default(0) @db.Decimal(16, 2)
+  amountDue        Decimal    @default(0) @db.Decimal(16, 2)
+  currency         String     @default("USD")
+  notes            String?    @db.Text
+  createdBy        String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  creator       User?          @relation("BillCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  payments      BillPayment[]
+
+  @@unique([tenantId, billNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, purchaseOrderId])
+  @@index([tenantId, dueDate])
+  @@map("bills")
+}
+
+model BillPayment {
+  id             String               @id @default(cuid())
+  tenantId       String
+  billId         String
+  supplierId     String?
+  amount         Decimal              @db.Decimal(16, 2)
+  currency       String               @default("USD")
+  paymentMethod  FinancePaymentMethod @default(BANK_TRANSFER)
+  paymentDate    DateTime
+  reference      String?
+  notes          String?              @db.Text
+  journalEntryId String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bill         Bill          @relation(fields: [billId], references: [id], onDelete: Cascade)
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, billId])
+  @@index([tenantId, paymentDate])
+  @@map("bill_payments")
+}
+
+// ── Module 16: HR ────────────────────────────────────────────────────────────
+
+enum DesignationLevel {
+  INTERN
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  MANAGER
+  DIRECTOR
+  C_LEVEL
+}
+
+enum EmployeeType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+  PROBATION
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LATE
+  HOLIDAY
+  WEEKEND
+}
+
+enum AttendanceSource {
+  MANUAL
+  MOBILE
+  WEB
+}
+
+model Department {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  code       String
+  managerId  String?
+  parentId   String?
+  headcount  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager     Employee?    @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  parent      Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Department[] @relation("DepartmentHierarchy")
+  designations Designation[]
+  employees   Employee[]   @relation("EmployeeDepartment")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+  @@map("departments")
+}
+
+model Designation {
+  id           String           @id @default(cuid())
+  tenantId     String
+  title        String
+  departmentId String?
+  level        DesignationLevel @default(MID)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employees  Employee[]
+
+  @@unique([tenantId, title])
+  @@index([tenantId, departmentId])
+  @@map("designations")
+}
+
+model Employee {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  userId             String?        @unique
+  employeeNumber     String
+  firstName          String
+  lastName           String
+  email              String
+  phone              String?
+  dateOfBirth        DateTime?
+  gender             String?
+  nationalId         String?
+  address            Json           @default("{}")
+  photo              String?
+  departmentId       String?
+  designationId      String?
+  managerId          String?
+  type               EmployeeType   @default(FULL_TIME)
+  status             EmployeeStatus @default(ACTIVE)
+  joinDate           DateTime
+  confirmationDate   DateTime?
+  terminationDate    DateTime?
+  terminationReason  String?        @db.Text
+  emergencyContact   Json           @default("{}")
+  bankDetailsEnc     String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department       Department?       @relation("EmployeeDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  designation      Designation?      @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  manager          Employee?         @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports    Employee[]        @relation("EmployeeManager")
+  departmentsManaged Department[]    @relation("DepartmentManager")
+  leaveAllocations LeaveAllocation[]
+  leaveRequests    LeaveRequest[]
+  attendances      Attendance[]
+  leaveApprovals   LeaveRequest[]    @relation("LeaveApprover")
+  employeeSalaries EmployeeSalary[]
+  payrollSlips     PayrollSlip[]
+
+  @@unique([tenantId, employeeNumber])
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, designationId])
+  @@map("employees")
+}
+
+model LeaveType {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  code             String
+  daysAllowed      Decimal  @default(0) @db.Decimal(5, 1)
+  carryForward     Boolean  @default(false)
+  maxCarryForward  Decimal  @default(0) @db.Decimal(5, 1)
+  isPaid           Boolean  @default(true)
+  requiresApproval Boolean  @default(true)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allocations LeaveAllocation[]
+  requests    LeaveRequest[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("leave_types")
+}
+
+model LeaveAllocation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  employeeId    String
+  leaveTypeId   String
+  fiscalYear    Int
+  allocatedDays Decimal  @default(0) @db.Decimal(5, 1)
+  usedDays      Decimal  @default(0) @db.Decimal(5, 1)
+  remainingDays Decimal  @default(0) @db.Decimal(5, 1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, employeeId, leaveTypeId, fiscalYear])
+  @@index([tenantId, employeeId])
+  @@map("leave_allocations")
+}
+
+model LeaveRequest {
+  id             String             @id @default(cuid())
+  tenantId       String
+  employeeId     String
+  leaveTypeId    String
+  startDate      DateTime
+  endDate        DateTime
+  days           Decimal            @db.Decimal(5, 1)
+  reason         String?            @db.Text
+  status         LeaveRequestStatus @default(PENDING)
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectedReason String?            @db.Text
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee  Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType  @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  approver  Employee?  @relation("LeaveApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, startDate, endDate])
+  @@map("leave_requests")
+}
+
+model Attendance {
+  id            String           @id @default(cuid())
+  tenantId      String
+  employeeId    String
+  date          DateTime         @db.Date
+  checkIn       DateTime?
+  checkOut      DateTime?
+  workingHours  Decimal          @default(0) @db.Decimal(5, 2)
+  status        AttendanceStatus @default(PRESENT)
+  source        AttendanceSource @default(WEB)
+  notes         String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, employeeId, date])
+  @@index([tenantId, date])
+  @@index([tenantId, employeeId, date])
+  @@map("attendances")
+}
+
+enum SalaryComponentType {
+  EARNING
+  DEDUCTION
+  BENEFIT
+}
+
+enum SalaryCalculationType {
+  FIXED
+  PERCENTAGE_OF_BASIC
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSING
+  REVIEW
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum PayrollSlipStatus {
+  DRAFT
+  FINAL
+}
+
+model SalaryStructure {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  components Json     @default("[]")
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeSalaries EmployeeSalary[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("salary_structures")
+}
+
+model EmployeeSalary {
+  id                String   @id @default(cuid())
+  tenantId          String
+  employeeId        String
+  salaryStructureId String
+  basicSalary       Decimal  @db.Decimal(12, 2)
+  effectiveFrom     DateTime @db.Date
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Restrict)
+  creator         User?           @relation("EmployeeSalaryCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, effectiveFrom])
+  @@map("employee_salaries")
+}
+
+model PayrollRun {
+  id              String           @id @default(cuid())
+  tenantId        String
+  month           Int
+  year            Int
+  status          PayrollRunStatus @default(DRAFT)
+  totalGross      Decimal          @default(0) @db.Decimal(14, 2)
+  totalDeductions Decimal          @default(0) @db.Decimal(14, 2)
+  totalNet        Decimal          @default(0) @db.Decimal(14, 2)
+  employeeCount   Int              @default(0)
+  processedBy     String?
+  approvedBy      String?
+  paidAt          DateTime?
+  journalEntryId  String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slips         PayrollSlip[]
+  processor     User?         @relation("PayrollProcessor", fields: [processedBy], references: [id], onDelete: SetNull)
+  approver      User?         @relation("PayrollApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  journalEntry  JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, month, year])
+  @@index([tenantId, status])
+  @@map("payroll_runs")
+}
+
+model PayrollSlip {
+  id              String            @id @default(cuid())
+  payrollRunId    String
+  tenantId        String
+  employeeId      String
+  earnings        Json              @default("[]")
+  deductions      Json              @default("[]")
+  grossSalary     Decimal           @db.Decimal(12, 2)
+  totalDeductions Decimal           @db.Decimal(12, 2)
+  netSalary       Decimal           @db.Decimal(12, 2)
+  workingDays     Int               @default(0)
+  presentDays     Decimal           @default(0) @db.Decimal(5, 1)
+  leaveDeductions Decimal           @default(0) @db.Decimal(12, 2)
+  taxDeducted     Decimal           @default(0) @db.Decimal(12, 2)
+  status          PayrollSlipStatus @default(DRAFT)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollRunId, employeeId])
+  @@index([tenantId, employeeId])
+  @@map("payroll_slips")
+}
+
 // ── Module 08: Security & Governance ─────────────────────────────────────────
 
 model User {
@@ -1229,6 +2365,21 @@ model User {
   purchaseOrdersCreated PurchaseOrder[] @relation("POCreator")
   purchaseOrdersApproved PurchaseOrder[] @relation("POApprover")
   goodsReceiptsReceived GoodsReceipt[] @relation("GoodsReceiver")
+  crmContactsOwned      CrmContact[]   @relation("CrmContactOwner")
+  crmCompaniesOwned     CrmCompany[]   @relation("CrmCompanyOwner")
+  crmDealsOwned         CrmDeal[]      @relation("CrmDealOwner")
+  crmActivitiesCreated  CrmActivity[]  @relation("CrmActivityCreator")
+  crmActivitiesAssigned CrmActivity[]  @relation("CrmActivityAssignee")
+  quotesOwned           Quote[]        @relation("QuoteOwner")
+  salesOrdersOwned      SalesOrder[]   @relation("SalesOrderOwner")
+  journalEntriesPosted  JournalEntry[] @relation("JournalEntryPoster")
+  journalEntriesVoided  JournalEntry[] @relation("JournalEntryVoider")
+  invoicesCreated       Invoice[]      @relation("InvoiceCreator")
+  billsCreated          Bill[]         @relation("BillCreator")
+  employeeProfile       Employee?
+  employeeSalariesCreated EmployeeSalary[] @relation("EmployeeSalaryCreator")
+  payrollRunsProcessed  PayrollRun[]   @relation("PayrollProcessor")
+  payrollRunsApproved   PayrollRun[]   @relation("PayrollApprover")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])

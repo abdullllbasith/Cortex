@@ -15,6 +15,11 @@ export interface TenantSettings {
   secondaryColor?: string
   rolePermissionOverrides?: Partial<Record<string, string[]>>
   inventoryCostingMethod?: 'FIFO' | 'WEIGHTED_AVERAGE' | 'LIFO'
+  finance?: {
+    bankDetails?: string
+    invoiceTerms?: string
+    defaultPaymentTermsDays?: number
+  }
   admin?: TenantAdminSettings
 }
 

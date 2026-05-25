@@ -10,6 +10,7 @@ import {
   Mail,
   PackageCheck,
   ShieldCheck,
+  FileText,
 } from 'lucide-react'
 import {
   PageHeader,
@@ -20,7 +21,8 @@ import {
   Input,
   toast,
 } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, apiClient } from '@/lib/api/apiClient'
+import { BarcodeScanner, type BarcodeScanResult } from '@/components/inventory/BarcodeScanner'
 
 type POStatus =
   | 'DRAFT'
@@ -108,11 +110,19 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
     swrFetcher,
   )
 
+  const { data: poBills, mutate: mutateBills } = useSWR<{ items: Array<{ id: string; billNumber: string; status: string }> }>(
+    `/finance/bills?purchaseOrderId=${poId}`,
+    swrFetcher,
+  )
+
+  const [highlightLine, setHighlightLine] = useState<number | null>(null)
   const [receiveDrafts, setReceiveDrafts] = useState<Record<number, ReceiveDraft>>({})
   const [receiving, setReceiving] = useState(false)
 
   const currentStep = po ? stepIndex(po.status) : 0
   const canReceive = po && ['SENT', 'ACKNOWLEDGED', 'PARTIAL'].includes(po.status)
+  const hasReceivedItems = po?.items.some((i) => i.quantityReceived > 0) ?? false
+  const canCreateBill = hasReceivedItems && po && !['DRAFT', 'CANCELLED'].includes(po.status)
 
   const initReceiveDraft = useCallback((items: POItemRow[]) => {
     const draft: Record<number, ReceiveDraft> = {}
@@ -186,6 +196,7 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
       }
       toast.success('Goods receipt recorded')
       mutate()
+      mutateBills()
     } finally {
       setReceiving(false)
     }
@@ -237,6 +248,35 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
                 <Mail className="h-4 w-4 mr-2" />
                 Send to Supplier
               </Button>
+            )}
+            {canCreateBill && (
+              poBills?.items?.[0] ? (
+                <Link href="/finance">
+                  <Button variant="secondary">
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Bill ({poBills.items[0].billNumber})
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      const bill = await apiClient.post<{ id: string; billNumber: string }>(
+                        '/finance/bills/from-po',
+                        { purchaseOrderId: poId },
+                      )
+                      toast.success(`Draft bill ${bill.billNumber} created`)
+                      await mutateBills()
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : 'Failed to create bill')
+                    }
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Create Bill
+                </Button>
+              )
             )}
           </div>
         }
@@ -378,6 +418,27 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
                 <PackageCheck className="h-5 w-5 text-indigo-600" />
                 <h3 className="font-semibold">Receive Goods</h3>
               </div>
+              <BarcodeScanner
+                onScan={(result: BarcodeScanResult) => {
+                  if (!po) return
+                  const index = po.items.findIndex((item) => item.productId === result.productId)
+                  if (index < 0) {
+                    toast.error('Scanned product is not on this PO')
+                    return
+                  }
+                  const item = po.items[index]
+                  const remaining = item.quantity - item.quantityReceived
+                  setReceiveDrafts((prev) => ({
+                    ...prev,
+                    [index]: {
+                      ...(prev[index] ?? { batchNumber: '', expiryDate: '' }),
+                      quantityReceived: remaining,
+                    },
+                  }))
+                  setHighlightLine(index)
+                  toast.success(`Line matched: ${result.name}`)
+                }}
+              />
               <div className="space-y-3">
                 {po.items.map((item, index) => {
                   const remaining = item.quantity - item.quantityReceived
@@ -390,7 +451,9 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
                   return (
                     <div
                       key={index}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end border rounded-lg p-3"
+                      className={`grid grid-cols-1 md:grid-cols-12 gap-3 items-end border rounded-lg p-3 ${
+                        highlightLine === index ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20' : ''
+                      }`}
                     >
                       <div className="md:col-span-4">
                         <p className="font-medium text-sm">{item.product?.name}</p>

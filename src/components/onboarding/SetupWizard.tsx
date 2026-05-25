@@ -113,6 +113,24 @@ export function SetupWizard() {
     router.push('/dashboard')
   })
 
+  const onStepAdvance = useCallback(async (stepIndex: number, values: SetupFormValues) => {
+    if (stepIndex !== 0) return
+    try {
+      await apiClient.post('/onboarding/setup', {
+        businessName: values.businessName,
+        currency: values.currency,
+        fiscalYearStart: values.fiscalYearStart,
+        timezone: values.timezone,
+      })
+      await apiClient.post('/finance/accounts/seed', {
+        currency: values.currency,
+        fiscalYearStart: values.fiscalYearStart,
+      })
+    } catch {
+      /* COA can be seeded later from finance accounts */
+    }
+  }, [])
+
   const industryOptions = INDUSTRIES.map((i) => ({ value: i, label: i }))
   const timezoneOptions = TIMEZONES.map((t) => ({ value: t.value, label: t.label }))
   const currencyOptions = CURRENCIES.map((c) => ({ value: c.value, label: `${c.flag} ${c.label}` }))
@@ -369,6 +387,7 @@ export function SetupWizard() {
           <FormStepper<SetupFormValues>
             steps={steps}
             storageKey="saios:setup-stepper"
+            onStepAdvance={onStepAdvance}
             onComplete={onComplete}
           />
         </CardBody>

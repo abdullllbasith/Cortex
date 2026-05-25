@@ -17,25 +17,11 @@ import {
   sendSupplierEmail,
 } from './supplierEmail'
 import { emitPOStatusChanged } from './inventoryWebhooks'
+import { emitSaiosEvent } from '@/lib/workflows/eventBus'
 import type { CreatePOInput, ReceiveGoodsInput, UpdatePOInput } from './purchaseOrderSchemas'
+import { parsePoItems, type POItem, type ReceiptItem } from './purchaseOrderTypes'
 
-export interface POItem {
-  productId: string
-  variantId?: string | null
-  quantity: number
-  unitCost: number
-  taxRate: number
-  totalCost: number
-  quantityReceived: number
-}
-
-export interface ReceiptItem {
-  poItemIndex: number
-  quantityReceived: number
-  unitCost: number
-  batchNumber?: string | null
-  expiryDate?: string | null
-}
+export type { POItem, ReceiptItem } from './purchaseOrderTypes'
 
 export interface POPdfLine {
   sku: string
@@ -110,8 +96,7 @@ function toDecimal(value: number): Decimal {
 }
 
 function parseItems(raw: unknown): POItem[] {
-  if (!Array.isArray(raw)) return []
-  return raw as POItem[]
+  return parsePoItems(raw)
 }
 
 function buildLineItems(items: CreatePOInput['items']): POItem[] {
@@ -575,6 +560,22 @@ export async function receiveGoods(
       supplierName: supplier?.name,
     })
   }
+
+  try {
+    const { createFromPO } = await import('@/lib/finance/billService')
+    await createFromPO(po.id, po.tenantId, receivedBy)
+  } catch {
+    // Draft bill creation is best-effort when no received qty yet
+  }
+
+  emitSaiosEvent(po.tenantId, 'goods_received', {
+    poId: po.id,
+    poNumber: po.poNumber,
+    receiptId: receipt.id,
+    receiptNumber,
+    poStatus: newStatus,
+    supplierId: po.supplierId,
+  })
 
   return { receiptId: receipt.id, receiptNumber, poStatus: newStatus }
 }

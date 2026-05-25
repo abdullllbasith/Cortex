@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { PageHeader, Button, Card, CardBody, Input, toast, ConfirmDialog } from '@/components/ui'
 import { swrFetcher } from '@/lib/api/apiClient'
+import { BarcodeScanner, type BarcodeScanResult } from '@/components/inventory/BarcodeScanner'
 
 const selectClass =
   'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900'
@@ -34,6 +35,8 @@ export function StockAdjustmentsClient() {
   const productList = Array.isArray(products) ? products : []
 
   const [productId, setProductId] = useState('')
+  const [variantId, setVariantId] = useState<string | null>(null)
+  const [scannedLabel, setScannedLabel] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [kind, setKind] = useState<'increase' | 'decrease' | 'write_off' | 'damage'>('increase')
   const [quantity, setQuantity] = useState(1)
@@ -55,6 +58,7 @@ export function StockAdjustmentsClient() {
         credentials: 'include',
         body: JSON.stringify({
           productId,
+          variantId: variantId ?? undefined,
           warehouseId,
           kind,
           quantity,
@@ -96,6 +100,16 @@ export function StockAdjustmentsClient() {
         <Card>
           <CardBody className="p-5 space-y-4">
             <h3 className="font-semibold">New Adjustment</h3>
+            <BarcodeScanner
+              onScan={(result: BarcodeScanResult) => {
+                setProductId(result.productId)
+                setVariantId(result.variantId ?? null)
+                setScannedLabel(result.name)
+              }}
+            />
+            {scannedLabel && (
+              <p className="text-xs text-emerald-600">Selected: {scannedLabel}</p>
+            )}
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Product</label>
               <select className={selectClass} value={productId} onChange={(e) => setProductId(e.target.value)}>

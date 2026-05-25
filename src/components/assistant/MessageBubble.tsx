@@ -6,7 +6,7 @@ import { Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui'
 import { SourceCitations } from './SourceCitations'
-import { ActionConfirmationCard } from './ActionConfirmationCard'
+import { ActionConfirmCard } from './ActionConfirmCard'
 import { useSessionStore } from '@/store/sessionStore'
 import type { ChatMessage } from '@/hooks/useAssistantChat'
 import type { ActionTaken } from '@/lib/assistant/types'
@@ -97,7 +97,7 @@ export function MessageBubble({ message, onUndoAction }: MessageBubbleProps) {
         )}
 
         {!isUser && !message.streaming && message.actionsTaken && message.actionsTaken.length > 0 && (
-          <ActionConfirmationCard actions={message.actionsTaken} onUndo={onUndoAction} />
+          <ActionConfirmCard actions={message.actionsTaken} onUndo={onUndoAction} />
         )}
       </div>
     </div>

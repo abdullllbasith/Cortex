@@ -24,6 +24,8 @@ export interface FormStepperProps<T extends FieldValues = FieldValues> {
   /** sessionStorage key for step progress */
   storageKey?: string
   onComplete?: () => void
+  /** Called after a step validates successfully and before advancing (not on final step) */
+  onStepAdvance?: (stepIndex: number, values: T) => void | Promise<void>
   className?: string
 }
 
@@ -35,6 +37,7 @@ export function FormStepper<T extends FieldValues>({
   steps,
   storageKey = 'saios:form-stepper',
   onComplete,
+  onStepAdvance,
   className,
 }: FormStepperProps<T>) {
   const { trigger, getValues } = useFormContext<T>()
@@ -87,9 +90,10 @@ export function FormStepper<T extends FieldValues>({
     if (isLast) {
       onComplete?.()
     } else {
+      await onStepAdvance?.(currentStep, getValues())
       setCurrentStep((s) => s + 1)
     }
-  }, [currentStep, isLast, onComplete, steps, trigger])
+  }, [currentStep, isLast, onComplete, onStepAdvance, steps, trigger, getValues])
 
   const goPrev = () => setCurrentStep((s) => Math.max(0, s - 1))
 

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { recordTransaction } from './stockEngine'
 import { classifyStock, type StockHealth } from './inventoryDashboardService'
 import { computeGrossMargin } from './valuationService'
+import { resolveCategoryIdByName } from './inventoryCategoryService'
 
 function toNumber(value: Decimal | number | null | undefined): number {
   if (value == null) return 0
@@ -121,7 +122,7 @@ export async function listCatalogProducts(tenantId: string, filters: CatalogFilt
   return { items, total, page, limit }
 }
 
-export async function getProductDetail(tenantId: string, productId: string) {
+export async function getProductDetail(tenantId: string, productId: string, opts: { includeAnalytics?: boolean } = {}) {
   const product = await prisma.product.findFirst({
     where: { id: productId, tenantId },
     include: {
@@ -152,7 +153,8 @@ export async function getProductDetail(tenantId: string, productId: string) {
   })
 
   let running = 0
-  const stockTrend = ledgerEntries.map((entry) => {
+  const stockTrendByDay = new Map<string, number>()
+  for (const entry of ledgerEntries) {
     const qty = toNumber(entry.quantity)
     if (['PURCHASE', 'TRANSFER_IN', 'RETURN_IN', 'OPENING'].includes(entry.transactionType)) {
       running += Math.abs(qty)
@@ -161,66 +163,14 @@ export async function getProductDetail(tenantId: string, productId: string) {
     } else if (entry.transactionType === 'ADJUSTMENT') {
       running += qty
     }
-    return {
-      date: entry.createdAt.toISOString().slice(0, 10),
-      quantityOnHand: Math.max(0, running),
-    }
-  })
-
-  const periodEnd = new Date()
-  const periodStart = new Date(Date.now() - 30 * 86400000)
-  const margin = await computeGrossMargin(tenantId, productId, { start: periodStart, end: periodEnd })
-
-  const salesByWeek = await prisma.stockLedger.groupBy({
-    by: ['createdAt'],
-    where: {
-      tenantId,
-      productId,
-      transactionType: 'SALE',
-      createdAt: { gte: periodStart },
-    },
-    _sum: { quantity: true },
-  })
-
-  const totalSold = salesByWeek.reduce((s, r) => s + Math.abs(toNumber(r._sum.quantity)), 0)
-  const revenueProxy = totalSold * toNumber(product.sellingPrice)
-
-  let abcClass: 'A' | 'B' | 'C' = 'C'
-  const allProducts = await prisma.product.findMany({
-    where: { tenantId, isActive: true },
-    select: { id: true, sellingPrice: true, inventoryLevel: true },
-  })
-  const productRevenues = await Promise.all(
-    allProducts.map(async (p) => {
-      const sold = await prisma.stockLedger.aggregate({
-        where: {
-          tenantId,
-          productId: p.id,
-          transactionType: 'SALE',
-          createdAt: { gte: periodStart },
-        },
-        _sum: { quantity: true },
-      })
-      return {
-        id: p.id,
-        revenue: Math.abs(toNumber(sold._sum.quantity)) * toNumber(p.sellingPrice),
-      }
-    }),
-  )
-  const sorted = productRevenues.sort((a, b) => b.revenue - a.revenue)
-  const totalRev = sorted.reduce((s, p) => s + p.revenue, 0)
-  if (totalRev > 0) {
-    let cumulative = 0
-    for (const row of sorted) {
-      cumulative += row.revenue / totalRev
-      if (row.id === productId) {
-        abcClass = cumulative <= 0.8 ? 'A' : cumulative <= 0.95 ? 'B' : 'C'
-        break
-      }
-    }
+    stockTrendByDay.set(entry.createdAt.toISOString().slice(0, 10), Math.max(0, running))
   }
+  const stockTrend = [...stockTrendByDay.entries()].map(([date, quantityOnHand]) => ({
+    date,
+    quantityOnHand,
+  }))
 
-  return {
+  const base = {
     ...product,
     imageUrls: product.imageUrls ?? [],
     costPrice: toNumber(product.costPrice),
@@ -251,12 +201,89 @@ export async function getProductDetail(tenantId: string, productId: string) {
       })),
     })),
     stockTrend,
-    analytics: {
-      unitsSold30d: totalSold,
-      grossMargin: margin,
-      abcClass,
-      revenueProxy,
-    },
+  }
+
+  if (!opts.includeAnalytics) {
+    return {
+      ...base,
+      analytics: null,
+    }
+  }
+
+  return {
+    ...base,
+    analytics: await getProductAnalytics(tenantId, productId, toNumber(product.sellingPrice)),
+  }
+}
+
+export async function getProductAnalyticsSummary(tenantId: string, productId: string) {
+  const product = await prisma.product.findFirst({
+    where: { id: productId, tenantId },
+    select: { sellingPrice: true },
+  })
+  if (!product) return null
+  return getProductAnalytics(tenantId, productId, toNumber(product.sellingPrice))
+}
+
+async function getProductAnalytics(tenantId: string, productId: string, sellingPrice: number) {
+  const periodEnd = new Date()
+  const periodStart = new Date(Date.now() - 30 * 86400000)
+
+  const [margin, soldAgg, salesByProduct, priceRows] = await Promise.all([
+    computeGrossMargin(tenantId, productId, { start: periodStart, end: periodEnd }),
+    prisma.stockLedger.aggregate({
+      where: {
+        tenantId,
+        productId,
+        transactionType: 'SALE',
+        createdAt: { gte: periodStart },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.stockLedger.groupBy({
+      by: ['productId'],
+      where: {
+        tenantId,
+        transactionType: 'SALE',
+        createdAt: { gte: periodStart },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.product.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, sellingPrice: true },
+    }),
+  ])
+
+  const totalSold = Math.abs(toNumber(soldAgg._sum.quantity))
+  const revenueProxy = totalSold * sellingPrice
+  const priceById = new Map(priceRows.map((p) => [p.id, toNumber(p.sellingPrice)]))
+
+  const productRevenues = salesByProduct
+    .map((row) => ({
+      id: row.productId,
+      revenue: Math.abs(toNumber(row._sum.quantity)) * (priceById.get(row.productId) ?? 0),
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+
+  let abcClass: 'A' | 'B' | 'C' = 'C'
+  const totalRev = productRevenues.reduce((s, p) => s + p.revenue, 0)
+  if (totalRev > 0) {
+    let cumulative = 0
+    for (const row of productRevenues) {
+      cumulative += row.revenue / totalRev
+      if (row.id === productId) {
+        abcClass = cumulative <= 0.8 ? 'A' : cumulative <= 0.95 ? 'B' : 'C'
+        break
+      }
+    }
+  }
+
+  return {
+    unitsSold30d: totalSold,
+    grossMargin: margin,
+    abcClass,
+    revenueProxy,
   }
 }
 
@@ -394,33 +421,6 @@ export async function updateCatalogProduct(
   return prisma.product.findFirstOrThrow({ where: { id: productId, tenantId } })
 }
 
-export async function importProductsFromCsv(
-  tenantId: string,
-  rows: Array<Record<string, string>>,
-  actorId?: string,
-) {
-  const created: string[] = []
-  for (const row of rows) {
-    if (!row.name?.trim()) continue
-    const product = await createCatalogProduct(
-      tenantId,
-      {
-        name: row.name.trim(),
-        sku: row.sku?.trim(),
-        barcode: row.barcode?.trim(),
-        costPrice: parseFloat(row.costPrice ?? '0'),
-        sellingPrice: parseFloat(row.sellingPrice ?? '0'),
-        reorderPoint: parseFloat(row.reorderPoint ?? '0'),
-        categoryId: row.categoryId?.trim(),
-        supplierId: row.supplierId?.trim(),
-      },
-      actorId,
-    )
-    created.push(product.id)
-  }
-  return { imported: created.length, productIds: created }
-}
-
 export async function deleteCatalogProduct(tenantId: string, productId: string, actorId?: string) {
   const product = await prisma.product.findFirst({ where: { id: productId, tenantId } })
   if (!product) throw new Error('Product not found')
@@ -441,4 +441,215 @@ export async function deleteCatalogProduct(tenantId: string, productId: string, 
   })
 
   return { id: productId, deleted: true }
+}
+
+export type DuplicateStrategy = 'skip' | 'overwrite' | 'create_new'
+
+export interface ImportPreviewRow {
+  rowIndex: number
+  data: Record<string, string>
+  errors: string[]
+  warnings: string[]
+  duplicateSku?: string
+}
+
+export async function previewCsvImport(
+  tenantId: string,
+  rows: Array<Record<string, string>>,
+): Promise<{ preview: ImportPreviewRow[]; totalRows: number; validRows: number; errorRows: number }> {
+  const preview: ImportPreviewRow[] = []
+  let validRows = 0
+  let errorRows = 0
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    if (!row.name?.trim()) errors.push('Name is required')
+    if (row.costPrice && Number.isNaN(parseFloat(row.costPrice))) errors.push('Invalid costPrice')
+    if (row.sellingPrice && Number.isNaN(parseFloat(row.sellingPrice))) errors.push('Invalid sellingPrice')
+
+    let duplicateSku: string | undefined
+    if (row.sku?.trim()) {
+      const existing = await prisma.product.findFirst({
+        where: { tenantId, sku: row.sku.trim() },
+        select: { id: true },
+      })
+      if (existing) {
+        duplicateSku = row.sku.trim()
+        warnings.push(`SKU "${row.sku.trim()}" already exists`)
+      }
+    }
+
+    if (row.categoryName?.trim() && !(await resolveCategoryIdByName(tenantId, row.categoryName!))) {
+      warnings.push(`Category "${row.categoryName}" not found — will be left empty`)
+    }
+
+    if (errors.length) errorRows++
+    else validRows++
+
+    if (preview.length < 5) {
+      preview.push({ rowIndex: i + 1, data: row, errors, warnings, duplicateSku })
+    }
+  }
+
+  return { preview, totalRows: rows.length, validRows, errorRows }
+}
+
+export async function importProductsFromCsv(
+  tenantId: string,
+  rows: Array<Record<string, string>>,
+  actorId?: string,
+  options: { duplicateStrategy?: DuplicateStrategy } = {},
+) {
+  const strategy = options.duplicateStrategy ?? 'skip'
+
+  const created: string[] = []
+  const updated: string[] = []
+  const skipped: string[] = []
+
+  for (const row of rows) {
+    if (!row.name?.trim()) continue
+
+    const sku = row.sku?.trim()
+    let existing = sku
+      ? await prisma.product.findFirst({ where: { tenantId, sku }, select: { id: true, sku: true } })
+      : null
+
+    const categoryId =
+      row.categoryId?.trim() ||
+      (row.categoryName?.trim() ? await resolveCategoryIdByName(tenantId, row.categoryName) : null) ||
+      undefined
+
+    const payload = {
+      name: row.name.trim(),
+      sku: sku || undefined,
+      barcode: row.barcode?.trim() || undefined,
+      costPrice: parseFloat(row.costPrice ?? '0'),
+      sellingPrice: parseFloat(row.sellingPrice ?? '0'),
+      reorderPoint: parseFloat(row.reorderPoint ?? '0'),
+      reorderQuantity: parseFloat(row.reorderQuantity ?? '0'),
+      categoryId: categoryId ?? undefined,
+      supplierId: row.supplierId?.trim() || undefined,
+      unit: row.unit?.trim() || undefined,
+      description: row.description?.trim() || undefined,
+    }
+
+    if (existing) {
+      if (strategy === 'skip') {
+        skipped.push(existing.id)
+        continue
+      }
+      if (strategy === 'overwrite') {
+        await updateCatalogProduct(tenantId, existing.id, payload, actorId)
+        updated.push(existing.id)
+        continue
+      }
+      // create_new — drop SKU to auto-generate
+      delete (payload as { sku?: string }).sku
+    }
+
+    const product = await createCatalogProduct(tenantId, payload, actorId)
+    created.push(product.id)
+  }
+
+  return {
+    imported: created.length,
+    updated: updated.length,
+    skipped: skipped.length,
+    productIds: [...created, ...updated],
+  }
+}
+
+export async function bulkUpdateProducts(
+  tenantId: string,
+  productIds: string[],
+  updates: {
+    categoryId?: string | null
+    supplierId?: string | null
+    costPrice?: number
+    sellingPrice?: number
+    isActive?: boolean
+  },
+  actorId?: string,
+) {
+  if (!productIds.length) throw new Error('No products selected')
+
+  const data: Prisma.ProductUpdateManyMutationInput = {}
+  if (updates.categoryId !== undefined) data.categoryId = updates.categoryId
+  if (updates.supplierId !== undefined) data.supplierId = updates.supplierId
+  if (updates.costPrice !== undefined) data.costPrice = toDecimal(updates.costPrice)
+  if (updates.sellingPrice !== undefined) data.sellingPrice = toDecimal(updates.sellingPrice)
+  if (updates.isActive !== undefined) data.isActive = updates.isActive
+
+  const result = await prisma.product.updateMany({
+    where: { tenantId, id: { in: productIds } },
+    data,
+  })
+
+  const auditUserId = await resolveAuditUserId(actorId)
+  await prisma.auditLog.create({
+    data: {
+      tenantId,
+      userId: auditUserId,
+      action: 'PRODUCT_BULK_UPDATE',
+      resourceType: 'product',
+      resourceId: productIds[0] ?? 'bulk',
+      newValue: { productIds, updates } as Prisma.InputJsonValue,
+    },
+  })
+
+  return { updated: result.count }
+}
+
+export async function exportProductsCsv(tenantId: string, productIds?: string[]) {
+  const products = await prisma.product.findMany({
+    where: {
+      tenantId,
+      ...(productIds?.length ? { id: { in: productIds } } : {}),
+    },
+    include: {
+      category: { select: { name: true } },
+      supplier: { select: { name: true } },
+    },
+    orderBy: { name: 'asc' },
+  })
+
+  const headers = [
+    'name',
+    'sku',
+    'barcode',
+    'costPrice',
+    'sellingPrice',
+    'reorderPoint',
+    'reorderQuantity',
+    'categoryName',
+    'supplierId',
+    'unit',
+    'description',
+    'isActive',
+  ]
+
+  const lines = [
+    headers.join(','),
+    ...products.map((p) =>
+      [
+        `"${p.name.replace(/"/g, '""')}"`,
+        p.sku,
+        p.barcode ?? '',
+        toNumber(p.costPrice),
+        toNumber(p.sellingPrice),
+        toNumber(p.reorderPoint),
+        toNumber(p.reorderQuantity),
+        p.category?.name ?? '',
+        p.supplierId ?? '',
+        p.unit,
+        `"${(p.description ?? '').replace(/"/g, '""')}"`,
+        p.isActive,
+      ].join(','),
+    ),
+  ]
+
+  return lines.join('\n')
 }

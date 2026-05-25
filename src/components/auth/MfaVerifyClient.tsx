@@ -1,14 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button, Card, CardBody, Input } from '@/components/ui'
 import { useSessionStore } from '@/store/sessionStore'
 
 export function MfaVerifyClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { accessToken, setSession, setTokens, user, tenant } = useSessionStore()
   const [code, setCode] = useState('')
+  const [useBackup, setUseBackup] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -27,7 +29,7 @@ export function MfaVerifyClient() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ code, issueFullSession: true }),
+        body: JSON.stringify({ code, rememberMe: true }),
       })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Invalid code')
@@ -43,7 +45,8 @@ export function MfaVerifyClient() {
         setTokens(json.data.accessToken)
       }
 
-      router.push('/dashboard')
+      const redirect = searchParams.get('redirect') ?? '/dashboard'
+      router.push(redirect)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')
     } finally {
@@ -59,20 +62,44 @@ export function MfaVerifyClient() {
             Two-factor verification
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Enter the 6-digit code from your authenticator app.
+            {useBackup
+              ? 'Enter one of your 8-character backup codes.'
+              : 'Enter the 6-digit code from your authenticator app.'}
           </p>
         </div>
         <Input
-          label="Authentication code"
-          inputMode="numeric"
-          maxLength={6}
+          label={useBackup ? 'Backup code' : 'Authentication code'}
+          inputMode={useBackup ? 'text' : 'numeric'}
+          maxLength={useBackup ? 12 : 6}
           value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="000000"
+          onChange={(e) => {
+            const raw = useBackup
+              ? e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()
+              : e.target.value.replace(/\D/g, '').slice(0, 6)
+            setCode(raw)
+          }}
+          placeholder={useBackup ? 'ABCD1234' : '000000'}
           autoFocus
         />
+        <button
+          type="button"
+          className="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+          onClick={() => {
+            setUseBackup((v) => !v)
+            setCode('')
+            setError(null)
+          }}
+        >
+          {useBackup ? 'Use authenticator app instead' : 'Use a backup code instead'}
+        </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button variant="primary" className="w-full" onClick={verify} loading={loading} disabled={code.length !== 6}>
+        <Button
+          variant="primary"
+          className="w-full"
+          onClick={verify}
+          loading={loading}
+          disabled={useBackup ? code.length < 8 : code.length !== 6}
+        >
           Verify & continue
         </Button>
       </CardBody>

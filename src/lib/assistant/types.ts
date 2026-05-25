@@ -2,6 +2,13 @@ import type { SemanticSearchResult } from '@/lib/embeddings/semanticSearch'
 
 export type AssistantIntent = 'QUERY' | 'COMMAND' | 'REPORT' | 'FORECAST' | 'AUTOMATION'
 
+export type ActionStatus = 'completed' | 'pending' | 'failed' | 'awaiting_confirmation' | 'cancelled'
+
+export interface ActionParameter {
+  label: string
+  value: string
+}
+
 export interface ConversationTurn {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -15,14 +22,24 @@ export interface ActionTaken {
   entityId?: string
   reversible?: boolean
   undoPayload?: Record<string, unknown>
-  status: 'completed' | 'pending' | 'failed'
+  status: ActionStatus
+  /** When true, user must confirm before executePayload runs */
+  requiresConfirmation?: boolean
+  /** Human-readable confirmation title */
+  displayTitle?: string
+  parameters?: ActionParameter[]
+  /** Payload passed to executeConfirmedAction on confirm */
+  executePayload?: Record<string, unknown>
+  /** Link to created record after success */
+  recordLink?: string
+  resultMessage?: string
 }
 
 export interface IntentClassification {
   intent: AssistantIntent
   confidence: number
   entities: Record<string, string | number | boolean>
-  handler?: 'sales' | 'inventory' | 'finance' | 'hr'
+  handler?: 'sales' | 'inventory' | 'finance' | 'hr' | 'crm'
 }
 
 export interface ConversationEngineInput {
@@ -32,6 +49,7 @@ export interface ConversationEngineInput {
   conversationHistory: ConversationTurn[]
   permissions?: string[]
   userRole?: string
+  userName?: string
   tenantName?: string
   sessionId?: string
 }

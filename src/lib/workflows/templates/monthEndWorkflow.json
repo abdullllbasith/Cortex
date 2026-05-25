@@ -1,0 +1,118 @@
+{
+  "triggerType": "SCHEDULE",
+  "triggerConfig": { "cronExpression": "0 8 1 * *", "timezone": "UTC" },
+  "nodes": [
+    {
+      "id": "t1",
+      "type": "trigger.schedule",
+      "position": { "x": 0, "y": 240 },
+      "data": {
+        "label": "Month-End (1st 08:00)",
+        "config": { "cronExpression": "0 8 1 * *", "timezone": "UTC" }
+      }
+    },
+    {
+      "id": "a-pl",
+      "type": "action.generate_monthly_report",
+      "position": { "x": 260, "y": 240 },
+      "data": {
+        "label": "Generate P&L (Last Month)",
+        "config": { "includePnL": true, "includeArAging": false, "includeApAging": false }
+      }
+    },
+    {
+      "id": "a-ar",
+      "type": "action.generate_monthly_report",
+      "position": { "x": 520, "y": 160 },
+      "data": {
+        "label": "AR Aging Report",
+        "config": { "includePnL": false, "includeArAging": true, "includeApAging": false }
+      }
+    },
+    {
+      "id": "a-overdue",
+      "type": "action.generate_monthly_report",
+      "position": { "x": 520, "y": 320 },
+      "data": {
+        "label": "Overdue Invoices + Reminders",
+        "config": {
+          "includePnL": false,
+          "includeArAging": false,
+          "includeApAging": false,
+          "sendOverdueReminders": true
+        }
+      }
+    },
+    {
+      "id": "a-reorder",
+      "type": "action.generate_monthly_report",
+      "position": { "x": 780, "y": 320 },
+      "data": {
+        "label": "Reorder Suggestions",
+        "config": {
+          "includePnL": false,
+          "includeArAging": false,
+          "includeApAging": true,
+          "includeReorderSuggestions": true
+        }
+      }
+    },
+    {
+      "id": "a-inv-mgr",
+      "type": "action.send_notification",
+      "position": { "x": 1040, "y": 320 },
+      "data": {
+        "label": "Notify Inventory Manager",
+        "config": {
+          "channel": "slack",
+          "recipient": "#inventory",
+          "message": "Monthly reorder report: review {{monthlyReport.reorderSuggestions.totalSuggestions}} items below reorder point."
+        }
+      }
+    },
+    {
+      "id": "a-digest",
+      "type": "action.generate_executive_digest",
+      "position": { "x": 780, "y": 160 },
+      "data": { "label": "Executive Monthly Digest", "config": { "mode": "monthly" } }
+    },
+    {
+      "id": "a-email",
+      "type": "action.send_notification",
+      "position": { "x": 1040, "y": 160 },
+      "data": {
+        "label": "Send Digest Email (Owner/CEO)",
+        "config": {
+          "channel": "email",
+          "recipient": "owner@company.com",
+          "message": "{{digestFormatted}}"
+        }
+      }
+    },
+    {
+      "id": "a-next",
+      "type": "action.send_notification",
+      "position": { "x": 1300, "y": 240 },
+      "data": {
+        "label": "Schedule Next Month Close",
+        "config": {
+          "channel": "slack",
+          "recipient": "#finance",
+          "message": "Month-end close completed. Next scheduled run: 1st of next month at 08:00 (cron 0 8 1 * *)."
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a-pl" },
+    { "id": "e2", "source": "a-pl", "target": "a-ar" },
+    { "id": "e3", "source": "a-pl", "target": "a-overdue" },
+    { "id": "e4", "source": "a-overdue", "target": "a-reorder" },
+    { "id": "e5", "source": "a-reorder", "target": "a-inv-mgr" },
+    { "id": "e6", "source": "a-pl", "target": "a-digest" },
+    { "id": "e7", "source": "a-digest", "target": "a-email" },
+    { "id": "e8", "source": "a-ar", "target": "a-email" },
+    { "id": "e9", "source": "a-inv-mgr", "target": "a-next" },
+    { "id": "e10", "source": "a-email", "target": "a-next" }
+  ]
+}

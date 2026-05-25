@@ -12,7 +12,7 @@ const undoSchema = z.object({
     description: z.string(),
     reversible: z.boolean().optional(),
     undoPayload: z.record(z.string(), z.unknown()).optional(),
-    status: z.enum(['completed', 'pending', 'failed']),
+    status: z.enum(['completed', 'pending', 'failed', 'awaiting_confirmation', 'cancelled']),
   }),
 })
 

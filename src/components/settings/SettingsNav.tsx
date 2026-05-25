@@ -40,7 +40,7 @@ export const SETTINGS_NAV: SettingsNavSection[] = [
     items: [
       { label: 'General', href: '/settings/general', icon: Globe },
       { label: 'Profile', href: '/settings/profile', icon: User },
-      { label: 'Security', href: '/settings/audit', icon: Shield },
+      { label: 'Security', href: '/settings/security', icon: Shield },
     ],
   },
   {

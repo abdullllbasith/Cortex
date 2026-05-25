@@ -26,6 +26,13 @@ export interface ExecutiveAnalyticsData {
       returningCustomers: number
     }
     inventory: {
+      summary?: {
+        totalSKUs: number
+        totalValue: number
+        lowStockCount: number
+        outOfStockCount: number
+        itemsOnOrder: number
+      }
       fastMovers: Array<{ productId: string; name: string; turnoverRate?: number; inventoryLevel?: number }>
       deadStock: Array<{ productId: string; name: string; daysIdle?: number; inventoryLevel?: number }>
       reorderRequired: Array<{ productId: string; name: string; inventoryLevel?: number; reorderPoint?: number }>
@@ -37,6 +44,8 @@ export interface ExecutiveAnalyticsData {
       costVariance: number
       reliabilityScore: Array<{ supplierId: string; name: string; score: number; onTimeRate: number }>
     }
+    finance?: FinanceAnalyticsData
+    hr?: HrAnalyticsData
   }
   insight?: { summary: string; generatedAt: string }
   revenueChart: Array<{ date: string; revenue: number; marginPct: number; isToday?: boolean }>
@@ -85,12 +94,70 @@ export interface CustomerAnalyticsData {
 
 export interface InventoryAnalyticsData {
   metrics: {
+    summary?: {
+      totalSKUs: number
+      totalValue: number
+      lowStockCount: number
+      outOfStockCount: number
+      itemsOnOrder: number
+    }
     fastMovers: Array<{ productId: string; name: string; turnoverRate?: number; inventoryLevel?: number }>
     deadStock: Array<{ productId: string; name: string; daysIdle?: number; inventoryLevel?: number }>
     reorderRequired: Array<{ productId: string; name: string; inventoryLevel?: number; reorderPoint?: number }>
     stockTurnoverRate: number
   }
+  valueTrend?: Array<{ date: string; value: number; movement: number }>
   computedAt: string
+}
+
+export interface FinanceAnalyticsData {
+  period: string
+  profitAndLoss: {
+    revenueTotal: number
+    expenseTotal: number
+    netIncome: number
+    changePercent: number
+  }
+  accountsReceivable: {
+    totalOutstanding: number
+    buckets: Array<{ label: string; count: number; total: number }>
+  }
+  accountsPayable: {
+    totalOutstanding: number
+    buckets: Array<{ label: string; count: number; total: number }>
+  }
+  cashPosition: number
+  collectedThisPeriod: number
+  invoicedThisPeriod: number
+}
+
+export interface HrAnalyticsData {
+  period: string
+  headcount: {
+    total: number
+    active: number
+    onLeave: number
+    byDepartment: Array<{ departmentId: string | null; departmentName: string; count: number }>
+    trend: Array<{ month: string; count: number }>
+  }
+  attendance: {
+    rate: number
+    presentDays: number
+    recordsLogged: number
+    employeeCount: number
+  }
+  leave: {
+    pendingRequests: number
+    approvedThisPeriod: number
+    rejectedThisPeriod: number
+    utilizationRate: number
+  }
+  payroll: {
+    lastRunMonth: number | null
+    lastRunYear: number | null
+    lastRunNet: number
+    employeeCount: number
+  }
 }
 
 export interface SupplierAnalyticsData {

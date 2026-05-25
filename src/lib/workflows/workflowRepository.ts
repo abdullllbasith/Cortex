@@ -2,7 +2,7 @@ import { WorkflowExecutionStatus, WorkflowTriggerType, type Prisma } from '@pris
 import { prisma } from '@/lib/db/prisma'
 import { createHash, randomBytes } from 'crypto'
 import type { WorkflowDefinitionJSON } from './types'
-import { getTemplateById, listTemplates } from './templates/templateLoader'
+import { getTemplateById, listTemplates } from './templates/index'
 import { triggerManager } from './TriggerManager'
 
 function webhookToken(): string {

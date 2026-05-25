@@ -3,8 +3,24 @@ import type { AdminRole } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { apiError } from '@/lib/knowledge/response'
 import { ADMIN_TOKEN_COOKIE, verifyAdminAccessToken } from '@/lib/auth/adminJwt'
+import {
+  checkIpAllowlist,
+  getAdminTokenFromRequest,
+  getClientIp,
+  isAdminApiRoute,
+  isAdminLoginRoute,
+  isAdminPageRoute,
+} from '@/middleware/adminAuthEdge'
 
-export { ADMIN_TOKEN_COOKIE }
+export {
+  ADMIN_TOKEN_COOKIE,
+  checkIpAllowlist,
+  getAdminTokenFromRequest,
+  getClientIp,
+  isAdminApiRoute,
+  isAdminLoginRoute,
+  isAdminPageRoute,
+}
 
 export interface AdminAuthContext {
   adminUserId: string
@@ -27,28 +43,7 @@ export class AdminAuthError extends Error {
 }
 
 function getBearerToken(request: NextRequest): string | null {
-  const auth = request.headers.get('authorization')
-  if (auth?.startsWith('Bearer ')) return auth.slice(7)
-  return request.cookies.get(ADMIN_TOKEN_COOKIE)?.value ?? null
-}
-
-export function getClientIp(request: NextRequest): string | null {
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0]?.trim() ?? null
-  return request.headers.get('x-real-ip')
-}
-
-export function parseIpAllowlist(): string[] {
-  const raw = process.env.ADMIN_IP_ALLOWLIST?.trim()
-  if (!raw) return []
-  return raw.split(',').map((ip) => ip.trim()).filter(Boolean)
-}
-
-export function checkIpAllowlist(ip: string | null): boolean {
-  const allowlist = parseIpAllowlist()
-  if (allowlist.length === 0) return true
-  if (!ip) return false
-  return allowlist.includes(ip) || allowlist.includes('*')
+  return getAdminTokenFromRequest(request)
 }
 
 function assertIpAllowed(request: NextRequest): void {
@@ -186,10 +181,6 @@ export async function authenticateAdminFromSession(
   }
 }
 
-export function getAdminTokenFromRequest(request: NextRequest): string | null {
-  return getBearerToken(request)
-}
-
 export async function logAdminAction(
   adminUserId: string,
   action: string,
@@ -263,16 +254,4 @@ export function requireAdminAuth(handler: AdminRouteHandler) {
       return apiError('Internal server error', 'INTERNAL_ERROR', 500)
     }
   }
-}
-
-export function isAdminApiRoute(pathname: string): boolean {
-  return pathname.startsWith('/api/admin/')
-}
-
-export function isAdminPageRoute(pathname: string): boolean {
-  return pathname === '/admin' || pathname.startsWith('/admin/')
-}
-
-export function isAdminLoginRoute(pathname: string): boolean {
-  return pathname === '/admin/login'
 }

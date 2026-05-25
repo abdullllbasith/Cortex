@@ -10,6 +10,7 @@ import { applyRateLimit } from '@/lib/security/rateLimiter'
 import { registerSchema } from '@/lib/auth/schemas'
 import { sanitizeInput } from '@/lib/security/sanitizer'
 import { TenantPlan } from '@prisma/client'
+import { seedDefaultAccounts } from '@/lib/finance/chartOfAccountsService'
 
 const PLAN_MAP: Record<string, TenantPlan> = {
   starter: 'STARTER',
@@ -72,6 +73,8 @@ export async function POST(request: NextRequest) {
         plan: PLAN_MAP[body.plan] ?? 'STARTER',
       },
     })
+
+    await seedDefaultAccounts(tenant.id, { currency: 'USD' })
 
     const user = await prisma.user.create({
       data: {

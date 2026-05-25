@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Grid3X3, List, Plus, Upload, Download } from 'lucide-react'
+import { Grid3X3, List, Plus, Upload, Download, FolderTree } from 'lucide-react'
 import {
   PageHeader,
   Button,
@@ -12,12 +12,14 @@ import {
   CardBody,
   Input,
   toast,
+  Modal,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
 import { swrFetcher } from '@/lib/api/apiClient'
 import { ProductCard, type ProductCardData } from '@/components/inventory/ProductCard'
 import { StockBadge, type StockHealth } from '@/components/inventory/StockBadge'
 import { StockLevelBar } from '@/components/inventory/StockLevelBar'
+import { ImportPreviewModal, type ImportPreviewRow } from '@/components/inventory/ImportPreviewModal'
 
 interface CatalogProduct extends ProductCardData {
   category: { id: string; name: string } | null
@@ -34,6 +36,11 @@ interface PaginatedProducts {
 const selectClass =
   'h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900'
 
+const TEMPLATE_CSV = [
+  'name,sku,barcode,costPrice,sellingPrice,reorderPoint,reorderQuantity,categoryName,supplierId,unit,description',
+  'Sample Widget,SKU-001,,10.00,19.99,5,10,Electronics,,PCS,Example product',
+].join('\n')
+
 export function ProductCatalogClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -44,6 +51,23 @@ export function ProductCatalogClient() {
   const [categoryId, setCategoryId] = useState('')
   const [supplierId, setSupplierId] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkCategory, setBulkCategory] = useState('')
+  const [bulkSupplier, setBulkSupplier] = useState('')
+  const [bulkCost, setBulkCost] = useState('')
+  const [bulkPrice, setBulkPrice] = useState('')
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false)
+  const [importRows, setImportRows] = useState<Array<Record<string, string>>>([])
+  const [importPreview, setImportPreview] = useState<{
+    preview: ImportPreviewRow[]
+    totalRows: number
+    validRows: number
+    errorRows: number
+  } | null>(null)
+  const [duplicateStrategy, setDuplicateStrategy] = useState<'skip' | 'overwrite' | 'create_new'>('skip')
+  const [importing, setImporting] = useState(false)
+
   const stockHealth = searchParams.get('stockHealth') ?? ''
 
   const queryKey = useMemo(() => {
@@ -63,16 +87,25 @@ export function ProductCatalogClient() {
     swrFetcher,
   )
   const { data: suppliersData } = useSWR<{ data: Array<{ id: string; name: string }> }>(
-    '/suppliers?limit=100',
+    '/inventory/suppliers?limit=100',
     swrFetcher,
   )
 
   const products = data?.data ?? []
-  const suppliers = suppliersData?.data ?? []
+  const suppliers = suppliersData?.data ?? suppliersData ?? []
+  const supplierList = Array.isArray(suppliers) ? suppliers : []
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const downloadTemplate = () => {
-    const csv = 'name,sku,barcode,costPrice,sellingPrice,reorderPoint,categoryId,supplierId\nSample Product,SKU-001,,10.00,19.99,5,,\n'
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob([TEMPLATE_CSV], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -81,38 +114,122 @@ export function ProductCatalogClient() {
     URL.revokeObjectURL(url)
   }
 
-  const handleImport = useCallback(
-    async (file: File) => {
-      const text = await file.text()
-      const lines = text.trim().split('\n')
-      const headers = lines[0].split(',').map((h) => h.trim())
-      const rows = lines.slice(1).map((line) => {
-        const vals = line.split(',')
-        const row: Record<string, string> = {}
-        headers.forEach((h, i) => {
-          row[h] = vals[i]?.trim() ?? ''
-        })
-        return row
-      })
-      const res = await fetch('/api/inventory/products', {
-        method: 'PUT',
+  const parseCsvFile = async (file: File) => {
+    const text = await file.text()
+    const lines = text.trim().split(/\r?\n/)
+    const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+    return lines.slice(1).map((line) => {
+      const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
+      return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? '']))
+    })
+  }
+
+  const handleImportFile = useCallback(async (file: File) => {
+    const rows = await parseCsvFile(file)
+    setImportRows(rows)
+    const res = await fetch('/api/inventory/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ rows, preview: true }),
+    })
+    const json = await res.json()
+    if (!json.success) {
+      toast.error(json.error?.message ?? 'Preview failed')
+      return
+    }
+    setImportPreview(json.data)
+    setImportPreviewOpen(true)
+  }, [])
+
+  const confirmImport = async () => {
+    setImporting(true)
+    try {
+      const res = await fetch('/api/inventory/import', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ rows }),
+        body: JSON.stringify({ rows: importRows, duplicateStrategy }),
       })
       const json = await res.json()
-      if (!json.success) {
-        toast.error(json.error?.message ?? 'Import failed')
-        return
-      }
-      toast.success(`Imported ${json.data.imported} products`)
+      if (!json.success) throw new Error(json.error?.message ?? 'Import failed')
+      toast.success(
+        `Imported ${json.data.imported}, updated ${json.data.updated ?? 0}, skipped ${json.data.skipped ?? 0}`,
+      )
+      setImportPreviewOpen(false)
       mutate()
-    },
-    [mutate],
-  )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const runBulk = async (action: 'update' | 'activate' | 'deactivate' | 'export') => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (action === 'export') {
+      const res = await fetch('/api/inventory/products/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'export', productIds: ids }),
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'products-export.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+    const body: Record<string, unknown> = { action, productIds: ids }
+    if (action === 'update') {
+      body.updates = {
+        ...(bulkCategory && { categoryId: bulkCategory }),
+        ...(bulkSupplier && { supplierId: bulkSupplier }),
+        ...(bulkCost && { costPrice: Number(bulkCost) }),
+        ...(bulkPrice && { sellingPrice: Number(bulkPrice) }),
+      }
+    }
+    const res = await fetch('/api/inventory/products/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    })
+    const json = await res.json()
+    if (!json.success) {
+      toast.error(json.error?.message ?? 'Bulk action failed')
+      return
+    }
+    toast.success(`Updated ${json.data.updated} product(s)`)
+    setBulkOpen(false)
+    setSelected(new Set())
+    mutate()
+  }
 
   const columns: ColumnDef<Record<string, unknown>>[] = useMemo(
     () => [
+      {
+        id: 'select',
+        header: '',
+        cell: ({ row }) => {
+          const p = row as CatalogProduct
+          return (
+            <input
+              type="checkbox"
+              checked={selected.has(p.id)}
+              onChange={(e) => {
+                e.stopPropagation()
+                toggleSelect(p.id)
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )
+        },
+      },
       { id: 'sku', header: 'SKU', accessorKey: 'sku', sortable: true },
       { id: 'name', header: 'Product', accessorKey: 'name', sortable: true },
       {
@@ -144,7 +261,7 @@ export function ProductCatalogClient() {
           ),
       },
     ],
-    [],
+    [selected],
   )
 
   return (
@@ -158,6 +275,11 @@ export function ProductCatalogClient() {
         ]}
         actions={
           <div className="flex gap-2 flex-wrap">
+            <Link href="/inventory/categories">
+              <Button variant="outline" size="sm">
+                <FolderTree className="h-4 w-4 mr-1" /> Categories
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={downloadTemplate}>
               <Download className="h-4 w-4 mr-1" /> Template
             </Button>
@@ -171,7 +293,7 @@ export function ProductCatalogClient() {
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0]
-                if (f) void handleImport(f)
+                if (f) void handleImportFile(f)
               }}
             />
             <Link href="/inventory/products/new">
@@ -182,6 +304,17 @@ export function ProductCatalogClient() {
           </div>
         }
       />
+
+      {selected.size > 0 && (
+        <div className="px-6 py-2 bg-indigo-50 dark:bg-indigo-950/30 border-b flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>Bulk edit</Button>
+          <Button size="sm" variant="outline" onClick={() => void runBulk('export')}>Export CSV</Button>
+          <Button size="sm" variant="outline" onClick={() => void runBulk('activate')}>Activate</Button>
+          <Button size="sm" variant="outline" onClick={() => void runBulk('deactivate')}>Deactivate</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
 
       <div className="flex-1 p-6 space-y-4 overflow-auto">
         <Card>
@@ -200,7 +333,7 @@ export function ProductCatalogClient() {
             </select>
             <select className={selectClass} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">All suppliers</option>
-              {suppliers.map((s) => (
+              {supplierList.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
@@ -240,7 +373,15 @@ export function ProductCatalogClient() {
               <p className="text-slate-500 col-span-full">No products found.</p>
             )}
             {products.map((p) => (
-              <ProductCard key={p.id} product={p} />
+              <div key={p.id} className="relative">
+                <input
+                  type="checkbox"
+                  className="absolute top-2 left-2 z-10"
+                  checked={selected.has(p.id)}
+                  onChange={() => toggleSelect(p.id)}
+                />
+                <ProductCard product={p} />
+              </div>
             ))}
           </div>
         ) : (
@@ -257,6 +398,44 @@ export function ProductCatalogClient() {
           </Card>
         )}
       </div>
+
+      <Modal open={bulkOpen} onOpenChange={setBulkOpen} title={`Bulk edit ${selected.size} products`}>
+        <div className="space-y-3">
+          <select className={selectClass + ' w-full'} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+            <option value="">— Category (no change) —</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <select className={selectClass + ' w-full'} value={bulkSupplier} onChange={(e) => setBulkSupplier(e.target.value)}>
+            <option value="">— Supplier (no change) —</option>
+            {supplierList.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <Input placeholder="Cost price (optional)" type="number" value={bulkCost} onChange={(e) => setBulkCost(e.target.value)} />
+          <Input placeholder="Selling price (optional)" type="number" value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button onClick={() => void runBulk('update')}>Apply</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {importPreview && (
+        <ImportPreviewModal
+          open={importPreviewOpen}
+          onClose={() => setImportPreviewOpen(false)}
+          preview={importPreview.preview}
+          totalRows={importPreview.totalRows}
+          validRows={importPreview.validRows}
+          errorRows={importPreview.errorRows}
+          duplicateStrategy={duplicateStrategy}
+          onDuplicateStrategyChange={setDuplicateStrategy}
+          onConfirm={() => void confirmImport()}
+          importing={importing}
+        />
+      )}
     </div>
   )
 }

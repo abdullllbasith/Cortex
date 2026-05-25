@@ -1,0 +1,17 @@
+{
+  "triggerType": "EVENT",
+  "triggerConfig": { "eventType": "new_contact_created" },
+  "nodes": [
+    { "id": "t1", "type": "trigger.event", "position": { "x": 0, "y": 0 }, "data": { "label": "New Contact", "config": { "eventType": "new_contact_created" } } },
+    { "id": "d1", "type": "control.delay", "position": { "x": 220, "y": 0 }, "data": { "label": "Wait 1 Day", "config": { "duration": 1, "unit": "days" } } },
+    { "id": "a1", "type": "action.send_notification", "position": { "x": 440, "y": 0 }, "data": { "label": "Welcome Email", "config": { "channel": "email", "recipient": "{{email}}", "message": "Welcome {{firstName}} — thanks for connecting with us!" } } },
+    { "id": "d2", "type": "control.delay", "position": { "x": 660, "y": 0 }, "data": { "label": "Wait 3 Days", "config": { "duration": 3, "unit": "days" } } },
+    { "id": "a2", "type": "action.send_notification", "position": { "x": 880, "y": 0 }, "data": { "label": "Assign to Sales", "config": { "channel": "slack", "recipient": "#sales", "message": "New {{type}} lead: {{firstName}} {{lastName}} — nurture sequence started" } } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "d1" },
+    { "id": "e2", "source": "d1", "target": "a1" },
+    { "id": "e3", "source": "a1", "target": "d2" },
+    { "id": "e4", "source": "d2", "target": "a2" }
+  ]
+}
