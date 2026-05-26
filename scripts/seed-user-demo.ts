@@ -275,7 +275,7 @@ async function main() {
     process.exit(1)
   }
 
-  if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
+  if (user.role !== 'OWNER' && user.role !== 'CEO') {
     console.warn(`⚠ User role is ${user.role} — seeding tenant "${user.tenant.slug}" anyway.`)
   }
 

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { withTenantAuth, handleRouteError, parseQuery } from '@/lib/knowledge/apiHandler'
 import { apiSuccess, paginatedMeta } from '@/lib/knowledge/response'
 import { orderCreateSchema, orderListQuerySchema } from '@/lib/sales/salesSchemas'
-import { createOrder, getOrderDashboard, listOrders } from '@/lib/sales/orderService'
+import { getOrderDashboard } from '@/lib/sales/orderDashboardService'
+import { createOrder, listOrders } from '@/lib/sales/orderService'
 
 export const GET = withTenantAuth(async (request, { auth }) => {
   try {

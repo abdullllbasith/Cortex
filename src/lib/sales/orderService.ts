@@ -162,28 +162,7 @@ export async function listOrders(
   }
 }
 
-export async function getOrderDashboard(tenantId: string) {
-  const start = monthStart()
-  const [newOrders, processing, readyToShip, deliveredThisMonth, cancelled] = await Promise.all([
-    prisma.salesOrder.count({
-      where: { tenantId, status: { in: [SalesOrderStatus.DRAFT, SalesOrderStatus.CONFIRMED] } },
-    }),
-    prisma.salesOrder.count({
-      where: { tenantId, status: { in: [SalesOrderStatus.PROCESSING, SalesOrderStatus.PICKING] } },
-    }),
-    prisma.salesOrder.count({
-      where: { tenantId, status: SalesOrderStatus.PACKED },
-    }),
-    prisma.salesOrder.count({
-      where: { tenantId, deliveredAt: { gte: start } },
-    }),
-    prisma.salesOrder.count({
-      where: { tenantId, status: SalesOrderStatus.CANCELLED },
-    }),
-  ])
-
-  return { newOrders, processing, readyToShip, deliveredThisMonth, cancelled }
-}
+export { getOrderDashboard } from './orderDashboardService'
 
 export async function getOrder(tenantId: string, id: string) {
   const order = await prisma.salesOrder.findFirst({

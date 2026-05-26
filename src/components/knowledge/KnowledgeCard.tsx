@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { KnowledgeEntityType } from '@/lib/embeddings/knowledgeIndexer'
 import { EmbeddingStatusBadge } from './EmbeddingStatusBadge'
 
 export interface KnowledgeCardProps {
   id: string
-  entityType: 'customer' | 'product' | 'supplier' | 'knowledge'
+  entityType: KnowledgeEntityType
   title: string
   snippet: string
   similarity?: number
@@ -16,11 +17,12 @@ export interface KnowledgeCardProps {
   className?: string
 }
 
-const typeLabels = {
+const typeLabels: Record<KnowledgeEntityType, string> = {
   customer: 'Customer',
   product: 'Product',
   supplier: 'Supplier',
   knowledge: 'Document',
+  contact: 'Contact',
 }
 
 export function KnowledgeCard({
@@ -33,7 +35,12 @@ export function KnowledgeCard({
   metadata,
   className,
 }: KnowledgeCardProps) {
-  const href = `/knowledge/${entityType === 'knowledge' ? 'documents' : entityType + 's'}/${id}`
+  const href =
+    entityType === 'knowledge'
+      ? `/knowledge/documents/${id}`
+      : entityType === 'contact'
+        ? `/knowledge/contacts/${id}`
+        : `/knowledge/${entityType}s/${id}`
 
   return (
     <article
