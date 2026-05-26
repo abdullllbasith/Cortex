@@ -10,6 +10,7 @@ import {
 import { MFA_PENDING_COOKIE } from '@/lib/auth/sessionCookies'
 
 const PUBLIC_PATHS = [
+  '/',
   '/login',
   '/register',
   '/forgot-password',
@@ -19,6 +20,7 @@ const PUBLIC_PATHS = [
   '/mfa',
   '/pricing',
   '/about',
+  '/legal',
 ]
 
 const PUBLIC_API_PREFIXES = [
