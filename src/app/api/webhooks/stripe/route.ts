@@ -1,3 +1,4 @@
+import { TenantPlan } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { notificationService } from '@/lib/notifications/notificationService'
@@ -15,11 +16,13 @@ function resolveTenantId(obj: Record<string, unknown>): string | null {
   return metadata?.tenantId ?? (obj.client_reference_id as string | undefined) ?? null
 }
 
-function mapStripePlan(metadata: Record<string, unknown> | undefined): string | null {
+function mapStripePlan(metadata: Record<string, unknown> | undefined): TenantPlan | null {
   const plan = metadata?.plan ?? metadata?.planId ?? metadata?.tier
   if (typeof plan !== 'string') return null
   const normalized = plan.toUpperCase()
-  if (['STARTER', 'PRO', 'ENTERPRISE'].includes(normalized)) return normalized
+  if (normalized === 'STARTER') return TenantPlan.STARTER
+  if (normalized === 'PRO' || normalized === 'PROFESSIONAL') return TenantPlan.PROFESSIONAL
+  if (normalized === 'ENTERPRISE') return TenantPlan.ENTERPRISE
   return null
 }
 
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
         if (plan) {
           await prisma.tenant.update({
             where: { id: tenantId },
-            data: { plan: plan as 'STARTER' | 'PRO' | 'ENTERPRISE' },
+            data: { plan },
           })
         }
         break
@@ -90,7 +93,7 @@ export async function POST(request: Request) {
         if (plan && event.type === 'customer.subscription.updated') {
           await prisma.tenant.update({
             where: { id: tenantId },
-            data: { plan: plan as 'STARTER' | 'PRO' | 'ENTERPRISE' },
+            data: { plan },
           })
         }
         const lines = obj.lines as { data?: Array<{ plan?: { nickname?: string } }> } | undefined

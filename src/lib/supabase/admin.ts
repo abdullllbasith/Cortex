@@ -57,7 +57,7 @@ export async function uploadFileToBucket(
 ): Promise<{ path: string; publicUrl: string }> {
   await ensureStorageBucket(admin, bucket)
 
-  const body = file instanceof Buffer ? file : Buffer.from(file)
+  const body = file instanceof Buffer ? file : Buffer.from(new Uint8Array(file))
 
   const { data, error } = await admin.storage.from(bucket).upload(path, body, {
     upsert: true,

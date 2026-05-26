@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import { verifySync } from 'otplib'
+import { z } from 'zod'
+import { SecurityEventType } from '@prisma/client'
 import { apiSuccess } from '@/lib/knowledge/response'
 import { prisma } from '@/lib/db/prisma'
 import { decryptField, encryptField } from '@/lib/security/encryption'
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       await logSecurityEvent({
         tenantId: payload.tenantId,
         userId: user.id,
-        eventType: 'MFA_ENABLED',
+        eventType: SecurityEventType.MFA_ENABLED,
         ipAddress: extractRequestMeta(request).ipAddress,
       })
     }
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
       await logSecurityEvent({
         tenantId: payload.tenantId,
         userId: user.id,
-        eventType: usedBackupCode ? 'MFA_BACKUP_CODE_USED' : 'LOGIN_SUCCESS',
+        eventType: usedBackupCode ? SecurityEventType.MFA_BACKUP_CODE_USED : SecurityEventType.LOGIN_SUCCESS,
         ipAddress: meta.ipAddress,
       })
       return response

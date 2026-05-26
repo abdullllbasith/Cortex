@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/utils'
 import { apiClient, swrFetcher } from '@/lib/api/apiClient'
 import { mapListItemToKnowledgeCard } from '@/lib/knowledge/knowledgeCardDisplay'
-import { useMutateCustomer } from '@/lib/api/hooks/useCustomers'
+import { useMutateCustomer, type CustomerCreatePayload } from '@/lib/api/hooks/useCustomers'
 import type { SemanticSearchResult } from '@/lib/embeddings/semanticSearch'
 
 type Tab = 'customers' | 'products' | 'suppliers' | 'documents'
@@ -79,7 +79,7 @@ export default function KnowledgeHubPage() {
       )
 
   async function handleCreateCustomer(values: CustomerCreateFormValues) {
-    const profile: Record<string, string> = {
+    const profile: CustomerCreatePayload['profile'] = {
       name: values.name,
       email: values.email,
     }
@@ -107,7 +107,13 @@ export default function KnowledgeHubPage() {
         <KnowledgeSearchBar
           onSearch={handleSearch}
           loading={searchLoading}
-          resultCount={searchQuery ? searchResults.length : listData?.meta?.total}
+          resultCount={
+            searchQuery
+              ? searchResults.length
+              : Array.isArray(listData)
+                ? listData.length
+                : listData?.meta?.total ?? listData?.total
+          }
         />
 
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
@@ -179,7 +185,9 @@ export default function KnowledgeHubPage() {
       <CustomerCreateModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => mutate()}
+        onCreated={() => {
+          void mutate()
+        }}
         onSubmit={handleCreateCustomer}
       />
     </div>

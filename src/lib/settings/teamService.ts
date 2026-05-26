@@ -7,7 +7,7 @@ import { sendTeamInviteEmail } from '@/lib/email/teamInviteEmail'
 
 const INVITE_TTL_HOURS = 48
 
-export interface TeamMemberDTO {
+export interface TeamMemberDTO extends Record<string, unknown> {
   id: string
   email: string
   fullName: string

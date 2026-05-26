@@ -4,7 +4,6 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FormProvider } from 'react-hook-form'
-import { Zap } from 'lucide-react'
 import { useAppForm } from '@/lib/forms/formConfig'
 import { registerSchema, type RegisterFormValues } from '@/lib/auth/schemas'
 import { FormInput } from '@/components/forms'
@@ -143,12 +142,22 @@ export function RegisterForm() {
   return (
     <FormProvider {...form}>
       <div className="mb-2 flex items-center gap-2.5 lg:hidden">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600">
-          <Zap className="h-4 w-4 text-white" />
+        <svg viewBox="0 0 32 32" fill="none" className="h-8 w-8">
+          <rect x="2" y="2" width="13" height="13" rx="3" fill="url(#rfG1)" opacity="0.9" />
+          <rect x="17" y="17" width="13" height="13" rx="3" fill="url(#rfG2)" />
+          <defs>
+            <linearGradient id="rfG1" x1="2" y1="2" x2="15" y2="15" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#7ECAC3" /><stop offset="1" stopColor="#5BA8A0" />
+            </linearGradient>
+            <linearGradient id="rfG2" x1="17" y1="17" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#5BA8A0" /><stop offset="1" stopColor="#3D8E87" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div className="flex flex-col leading-none">
+          <span className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-white">SAIOS</span>
+          <span className="text-[10px] font-medium text-[#5BA8A0]/80">by Softora</span>
         </div>
-        <span className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
-          SAIOS
-        </span>
       </div>
 
       <div className="mb-6">
@@ -175,7 +184,7 @@ export function RegisterForm() {
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+        <Link href="/login" style={{ textDecoration: 'none' }} className="font-medium text-[#5BA8A0] hover:text-[#3D8E87] dark:text-[#7ECAC3]">
           Sign in
         </Link>
       </p>

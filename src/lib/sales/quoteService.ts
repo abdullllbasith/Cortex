@@ -367,6 +367,7 @@ export async function acceptQuote(quoteId: string, tenantId: string, actorId?: s
   }
 
   const order = await createOrderFromQuote(tenantId, quoteId, actorId)
+  if (!order) throw new Error('Failed to create order from quote')
 
   await prisma.quote.update({
     where: { id: quoteId },
@@ -406,6 +407,7 @@ export async function convertToOrder(quoteId: string, tenantId: string, actorId?
   if (existing) return getOrder(tenantId, existing.id)
 
   const order = await createOrderFromQuote(tenantId, quoteId, actorId)
+  if (!order) throw new Error('Failed to create order from quote')
 
   if (quote.status !== QuoteStatus.ACCEPTED) {
     await prisma.quote.update({

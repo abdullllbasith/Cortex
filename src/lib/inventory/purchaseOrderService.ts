@@ -11,7 +11,6 @@ import type { TenantSettings } from '@/lib/settings/types'
 import { recordTransaction } from './stockEngine'
 import { buildPurchaseOrderPdf } from './poPdfDocument'
 import {
-  extractSupplierAddress,
   extractSupplierEmail,
   formatWarehouseAddress,
   sendSupplierEmail,
@@ -97,6 +96,19 @@ function toDecimal(value: number): Decimal {
 
 function parseItems(raw: unknown): POItem[] {
   return parsePoItems(raw)
+}
+
+function supplierDisplayEmail(email: string | null, address: Prisma.JsonValue): string | null {
+  const fromAddress =
+    typeof address === 'object' && address !== null && !Array.isArray(address)
+      ? extractSupplierEmail(address)
+      : null
+  if (typeof email === 'string' && email.includes('@')) return email
+  return fromAddress
+}
+
+function supplierDisplayAddress(address: Prisma.JsonValue): string | null {
+  return formatWarehouseAddress(address)
 }
 
 function buildLineItems(items: CreatePOInput['items']): POItem[] {
@@ -347,7 +359,7 @@ async function loadPdfData(poId: string): Promise<POPdfData> {
     where: { id: poId },
     include: {
       tenant: { select: { name: true, settings: true } },
-      supplier: { select: { name: true, supplierInfo: true } },
+      supplier: { select: { name: true, email: true, address: true } },
       warehouse: { select: { name: true, address: true } },
     },
   })
@@ -369,8 +381,8 @@ async function loadPdfData(poId: string): Promise<POPdfData> {
     poNumber: po.poNumber,
     orderDate: po.createdAt.toLocaleDateString('en-US'),
     supplierName: po.supplier.name,
-    supplierEmail: extractSupplierEmail(po.supplier.supplierInfo),
-    supplierAddress: extractSupplierAddress(po.supplier.supplierInfo),
+    supplierEmail: supplierDisplayEmail(po.supplier.email, po.supplier.address),
+    supplierAddress: supplierDisplayAddress(po.supplier.address),
     warehouseName: po.warehouse.name,
     warehouseAddress: formatWarehouseAddress(po.warehouse.address),
     expectedDelivery: po.expectedDelivery?.toLocaleDateString('en-US') ?? null,
@@ -398,7 +410,7 @@ async function loadPdfData(poId: string): Promise<POPdfData> {
 export async function sendPO(poId: string, actorId?: string): Promise<void> {
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: poId },
-    include: { supplier: { select: { name: true, supplierInfo: true } } },
+    include: { supplier: { select: { name: true, email: true, address: true } } },
   })
   if (!po) throw new PurchaseOrderError('Purchase order not found', 'NOT_FOUND')
   if (po.status !== PurchaseOrderStatus.DRAFT) {
@@ -413,7 +425,7 @@ export async function sendPO(poId: string, actorId?: string): Promise<void> {
     )
   }
 
-  const supplierEmail = extractSupplierEmail(po.supplier.supplierInfo)
+  const supplierEmail = supplierDisplayEmail(po.supplier.email, po.supplier.address)
   if (!supplierEmail) {
     throw new PurchaseOrderError(
       'Supplier email not configured in supplier profile',
@@ -584,7 +596,7 @@ export async function getPO(tenantId: string, poId: string) {
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: poId, tenantId },
     include: {
-      supplier: { select: { id: true, name: true, supplierInfo: true } },
+      supplier: { select: { id: true, name: true, email: true, address: true } },
       warehouse: { select: { id: true, name: true, code: true, address: true } },
       creator: { select: { id: true, fullName: true, email: true } },
       approver: { select: { id: true, fullName: true, email: true } },
@@ -625,7 +637,7 @@ export async function getPO(tenantId: string, poId: string) {
     })),
     needsApproval,
     approvalRule,
-    supplierEmail: extractSupplierEmail(po.supplier.supplierInfo),
+    supplierEmail: supplierDisplayEmail(po.supplier.email, po.supplier.address),
     timeline,
   }
 }

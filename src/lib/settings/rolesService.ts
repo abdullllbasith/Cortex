@@ -227,7 +227,7 @@ export async function createCustomRole(
 export async function updateCustomRole(
   tenantId: string,
   roleId: string,
-  data: { name?: string; description?: string },
+  data: { name?: string; description?: string | null },
 ) {
   const existing = await prisma.customRole.findFirst({ where: { id: roleId, tenantId } })
   if (!existing) throw new Error('Custom role not found')

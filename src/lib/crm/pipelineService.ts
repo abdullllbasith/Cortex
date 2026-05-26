@@ -201,13 +201,19 @@ export async function moveDeal(dealId: string, newStageId: string, tenantId: str
   }
 }
 
-export async function wonDeal(dealId: string, tenantId: string, actorId?: string) {
+export async function wonDeal(
+  dealId: string,
+  tenantId: string,
+  actualValue?: number,
+  actorId?: string,
+) {
   const deal = await prisma.crmDeal.update({
     where: { id: dealId },
     data: {
       status: DealStatus.WON,
       wonAt: new Date(),
       probability: 100,
+      ...(actualValue != null && !Number.isNaN(actualValue) ? { value: new Decimal(actualValue) } : {}),
     },
     include: {
       contact: { select: { firstName: true, lastName: true } },

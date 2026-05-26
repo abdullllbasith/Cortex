@@ -91,9 +91,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               'h-9 w-full rounded-md border bg-white text-sm text-slate-900 outline-none',
               'placeholder:text-slate-400',
               'transition-colors duration-150',
-              'focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20',
+              'focus:border-[#5BA8A0] focus:ring-2 focus:ring-[#5BA8A0]/20',
               'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
-              'dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500',
+              'dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:border-slate-700',
               'dark:disabled:bg-slate-800 dark:disabled:text-slate-600',
               hasError
                 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'

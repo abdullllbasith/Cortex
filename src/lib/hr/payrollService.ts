@@ -1,4 +1,4 @@
-import { JournalReferenceType } from '@prisma/client'
+import { JournalReferenceType, Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db/prisma'
@@ -35,7 +35,7 @@ async function ensureDefaultSalaryStructure(tenantId: string) {
       isDefault: true,
       components: DEFAULT_COMPONENTS.map((c) =>
         c.name === 'Basic Pay' ? { ...c, value: 0 } : c,
-      ),
+      ) as unknown as Prisma.InputJsonValue,
     },
   })
 }
@@ -364,8 +364,8 @@ export async function runPayroll(tenantId: string, month: number, year: number, 
         payrollRunId: run.id,
         tenantId,
         employeeId: emp.id,
-        earnings,
-        deductions,
+        earnings: earnings as unknown as Prisma.InputJsonValue,
+        deductions: deductions as unknown as Prisma.InputJsonValue,
         grossSalary: toDecimal(grossSalary),
         totalDeductions: toDecimal(slipDeductions),
         netSalary: toDecimal(netSalary),
@@ -587,8 +587,8 @@ export async function generatePaySlipPdf(slipId: string, tenantId: string): Prom
     designation: slip.employee.designation?.title ?? null,
     month: slip.payrollRun.month,
     year: slip.payrollRun.year,
-    earnings: slip.earnings as PayrollLineItem[],
-    deductions: slip.deductions as PayrollLineItem[],
+    earnings: slip.earnings as unknown as PayrollLineItem[],
+    deductions: slip.deductions as unknown as PayrollLineItem[],
     grossSalary: toNumber(slip.grossSalary),
     totalDeductions: toNumber(slip.totalDeductions),
     netSalary: toNumber(slip.netSalary),

@@ -58,28 +58,22 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
       })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+      const video = videoRef.current
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop())
+        toast.error('Video element not ready')
+        return
       }
+      video.srcObject = stream
+      await video.play()
 
-      let running = true
-      const tick = async () => {
-        if (!running || !videoRef.current) return
-        try {
-          const result = await reader.decodeFromVideoElement(videoRef.current)
-          if (result?.getText()) void lookup(result.getText())
-        } catch {
-          // no barcode in frame — expected at ~30fps
-        }
-        if (running) requestAnimationFrame(() => void tick())
-      }
-      void tick()
+      const controls = await reader.decodeFromStream(stream, video, (result) => {
+        if (result) void lookup(result.getText())
+      })
 
       controlsRef.current = {
         stop: () => {
-          running = false
-          reader.reset()
+          controls.stop()
           stream.getTracks().forEach((t) => t.stop())
         },
       }

@@ -340,7 +340,7 @@ export async function updateBill(
   const amountDue = Math.max(0, Math.round((totals.total - amountPaid) * 100) / 100)
   const dueDate = data.dueDate ? new Date(data.dueDate) : existing.dueDate
 
-  let status = existing.status
+  let status: BillStatus = existing.status
   if (data.status === 'PENDING' && existing.status === 'DRAFT') {
     await ensureBillAccrual(id, tenantId, actorId)
     status = 'PENDING'

@@ -135,7 +135,7 @@ export async function queryKnowledgeEntities(
 /** Documents / generic knowledge list (existing behavior). */
 export async function queryKnowledgeDocuments(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; type?: Parameters<typeof knowledgeRepository.listKnowledge>[1]['type'] },
+  options: { page?: number; limit?: number; search?: string; type?: string },
 ) {
-  return knowledgeRepository.listKnowledge(tenantId, options)
+  return knowledgeRepository.listKnowledge(tenantId, options as Parameters<typeof knowledgeRepository.listKnowledge>[1])
 }

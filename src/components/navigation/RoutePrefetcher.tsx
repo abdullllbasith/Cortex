@@ -36,10 +36,10 @@ export function RoutePrefetcher() {
       }
     }
 
-    const timer = window.setTimeout(prefetchAll, 1500)
+    const timer = setTimeout(prefetchAll, 1500)
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
+      clearTimeout(timer)
     }
   }, [router])
 

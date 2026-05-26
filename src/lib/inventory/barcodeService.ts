@@ -38,7 +38,8 @@ export async function generateUniqueEAN13(tenantId: string): Promise<string> {
 }
 
 export async function renderEAN13Svg(code: string): Promise<string> {
-  return bwipjs.toSVG({
+  const toSvg = (bwipjs as unknown as { toSVG: (opts: Record<string, unknown>) => string }).toSVG
+  return toSvg({
     bcid: 'ean13',
     text: code,
     scale: 2,

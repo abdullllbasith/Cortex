@@ -26,14 +26,14 @@ export function CustomersPageContent() {
   }, [data])
 
   async function handleCreate(values: CustomerCreateFormValues) {
-    const profile: Record<string, string> = {
-      name: values.name,
-      email: values.email,
-    }
-    if (values.company) profile.company = values.company
-    if (values.tier) profile.tier = values.tier
-
-    await create.trigger({ profile })
+    await create.trigger({
+      profile: {
+        name: values.name,
+        email: values.email,
+        ...(values.company.trim() ? { company: values.company.trim() } : {}),
+        ...(values.tier.trim() ? { tier: values.tier.trim() } : {}),
+      },
+    })
   }
 
   function runSearch(e: React.FormEvent) {
@@ -122,7 +122,7 @@ export function CustomersPageContent() {
       <CustomerCreateModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => mutate()}
+        onCreated={() => void mutate()}
         onSubmit={handleCreate}
       />
     </div>

@@ -1,4 +1,4 @@
-type EntityTab = 'customer' | 'product' | 'supplier' | 'knowledge'
+type EntityTab = 'customer' | 'product' | 'supplier' | 'knowledge' | 'contact'
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -15,9 +15,12 @@ export function buildKnowledgeCardTitle(
   entityType: EntityTab,
 ): string {
   switch (entityType) {
-    case 'customer': {
+    case 'customer':
+    case 'contact': {
       const profile = asRecord(item.profile)
-      return String(profile.name ?? item.name ?? 'Untitled customer')
+      return String(
+        profile.name ?? item.name ?? (entityType === 'contact' ? 'Untitled contact' : 'Untitled customer'),
+      )
     }
     case 'product':
       return String(item.name ?? asRecord(item.catalog).name ?? 'Untitled product')
@@ -35,7 +38,8 @@ export function buildKnowledgeCardSnippet(
   entityType: EntityTab,
 ): string {
   switch (entityType) {
-    case 'customer': {
+    case 'customer':
+    case 'contact': {
       const profile = asRecord(item.profile)
       const snippet = joinParts([
         profile.company ? String(profile.company) : null,

@@ -166,7 +166,7 @@ export function AdminDashboardClient() {
                       tickFormatter={(v) => v.slice(5)}
                     />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                    <Tooltip formatter={(v: number) => [`$${v}`, 'MRR']} />
+                    <Tooltip formatter={(v) => [`$${Number(v ?? 0)}`, 'MRR']} />
                     <Area
                       type="monotone"
                       dataKey="mrr"

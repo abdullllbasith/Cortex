@@ -62,7 +62,7 @@ interface SupplierDetail {
   bankDetails?: Record<string, string> | null
 }
 
-interface SupplierProduct {
+interface SupplierProduct extends Record<string, unknown> {
   id: string
   productId: string
   supplierSku: string | null
@@ -74,7 +74,7 @@ interface SupplierProduct {
   product: { id: string; sku: string; name: string }
 }
 
-interface POItem {
+interface POItem extends Record<string, unknown> {
   id: string
   poNumber: string
   status: string
@@ -450,7 +450,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
     <div className="flex flex-col gap-5 p-5 lg:p-6">
       <PageHeader
         title={supplier.name}
-        description={`${supplier.code} · ${supplier.type.replace('_', ' ')} · ${supplier.performanceScore}% reliability`}
+        subtitle={`${supplier.code} · ${supplier.type.replace('_', ' ')} · ${supplier.performanceScore}% reliability`}
         breadcrumbs={[
           { label: 'Inventory', href: '/inventory' },
           { label: 'Suppliers', href: '/inventory/suppliers' },
@@ -698,7 +698,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-                  <Tooltip formatter={(v: number) => [`${v}%`, 'On-time']} />
+                  <Tooltip formatter={(v) => [`${Number(v ?? 0)}%`, 'On-time']} />
                   <Bar dataKey="onTimeRate" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

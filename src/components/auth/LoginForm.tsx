@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FormProvider } from 'react-hook-form'
-import { Zap } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { FormInput, FormCheckbox } from '@/components/forms'
 import { useAppForm } from '@/lib/forms/formConfig'
@@ -146,10 +145,22 @@ export function LoginForm() {
     <FormProvider {...form}>
       <form onSubmit={onSubmit} noValidate className="space-y-7">
         <div className="flex items-center gap-2.5 lg:hidden">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-sm">
-            <Zap className="h-4 w-4 text-white" />
+          <svg viewBox="0 0 32 32" fill="none" className="h-8 w-8">
+            <rect x="2" y="2" width="13" height="13" rx="3" fill="url(#lfG1)" opacity="0.9" />
+            <rect x="17" y="17" width="13" height="13" rx="3" fill="url(#lfG2)" />
+            <defs>
+              <linearGradient id="lfG1" x1="2" y1="2" x2="15" y2="15" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#7ECAC3" /><stop offset="1" stopColor="#5BA8A0" />
+              </linearGradient>
+              <linearGradient id="lfG2" x1="17" y1="17" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#5BA8A0" /><stop offset="1" stopColor="#3D8E87" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="flex flex-col leading-none">
+            <span className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-white">SAIOS</span>
+            <span className="text-[10px] font-medium text-[#5BA8A0]/80">by Softora</span>
           </div>
-          <span className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">SAIOS</span>
         </div>
 
         <div>
@@ -170,7 +181,7 @@ export function LoginForm() {
         )}
 
         {tenantLocked && tenantSlug && (
-          <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm dark:border-indigo-900 dark:bg-indigo-950/40">
+          <div className="rounded-lg border border-[#5BA8A0]/30 bg-[#5BA8A0]/8 px-4 py-3 text-sm dark:border-[#5BA8A0]/20 dark:bg-[#5BA8A0]/10">
             <span className="text-slate-500 dark:text-slate-400">Workspace: </span>
             <span className="font-medium text-slate-900 dark:text-slate-100">{tenantSlug}.saios.app</span>
           </div>
@@ -197,7 +208,7 @@ export function LoginForm() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <FormCheckbox name="rememberMe" label="Remember me for 30 days" />
-          <Link href="/forgot-password" className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+          <Link href="/forgot-password" style={{ textDecoration: 'none' }} className="text-sm font-medium text-[#5BA8A0] hover:text-[#3D8E87] dark:text-[#7ECAC3]">
             Forgot password?
           </Link>
         </div>
@@ -210,7 +221,7 @@ export function LoginForm() {
 
         <p className="text-center text-sm text-slate-500 dark:text-slate-400">
           Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+          <Link href="/register" style={{ textDecoration: 'none' }} className="font-medium text-[#5BA8A0] hover:text-[#3D8E87] dark:text-[#7ECAC3]">
             Start free trial
           </Link>
         </p>

@@ -117,7 +117,7 @@ export function FormStepper<T extends FieldValues>({
         </div>
         <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800">
           <div
-            className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+            className="h-full rounded-full bg-[#5BA8A0] transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -136,9 +136,9 @@ export function FormStepper<T extends FieldValues>({
                   className={cn(
                     'flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors',
                     isCompleted
-                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      ? 'border-[#5BA8A0] bg-[#5BA8A0] text-white'
                       : isActive
-                        ? 'border-indigo-600 bg-white text-indigo-600 dark:bg-slate-900'
+                        ? 'border-[#5BA8A0] bg-white text-[#5BA8A0] dark:bg-slate-900'
                         : 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900',
                   )}
                 >
@@ -152,7 +152,7 @@ export function FormStepper<T extends FieldValues>({
                   className={cn(
                     'hidden sm:block text-[10px] font-medium text-center max-w-[80px] truncate',
                     isActive
-                      ? 'text-indigo-600 dark:text-indigo-400'
+                      ? 'text-[#5BA8A0] dark:text-[#7ECAC3]'
                       : 'text-slate-400',
                   )}
                 >
@@ -164,7 +164,7 @@ export function FormStepper<T extends FieldValues>({
                 <div
                   className={cn(
                     'h-0.5 flex-1 mx-1',
-                    isCompleted ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700',
+                    isCompleted ? 'bg-[#5BA8A0]' : 'bg-slate-200 dark:bg-slate-700',
                   )}
                   aria-hidden="true"
                 />

@@ -7,6 +7,7 @@ import {
   saveMessage,
 } from '@/lib/assistant/conversationMemory'
 import { MessageRole, ConversationIntent } from '@prisma/client'
+import { sendMail, isEmailConfigured } from '@/lib/email/mailTransport'
 
 export function normalizeIncomingMessage(
   channel: ChannelType,

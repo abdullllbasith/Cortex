@@ -107,7 +107,7 @@ async function touchLastChecked(tenantId: string): Promise<string> {
       settings: {
         ...settings,
         inventory: { ...(settings.inventory ?? {}), lastReorderCheck: now },
-      } as Prisma.InputJsonValue,
+      } as unknown as Prisma.InputJsonValue,
     },
   })
   return now
@@ -441,6 +441,8 @@ export async function createDraftPO(
       supplierId,
       warehouseId,
       items,
+      shippingCost: 0,
+      currency: 'USD',
       notes: `Auto-generated from reorder suggestions (${suggestions.length} line items)`,
     },
     createdBy,

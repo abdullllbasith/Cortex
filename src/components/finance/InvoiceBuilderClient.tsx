@@ -84,6 +84,8 @@ export function InvoiceBuilderClient() {
   const [terms, setTerms] = useState('Payment due within 30 days of invoice date.')
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10))
   const [dueDate, setDueDate] = useState(defaultDueDate(new Date().toISOString().slice(0, 10)))
+  const [currency, setCurrency] = useState('USD')
+  const [pdfPreviewId, setPdfPreviewId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const { data: existing } = useSWR<InvoiceDetail>(

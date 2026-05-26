@@ -118,7 +118,7 @@ function AgingDonut({
                   <Cell key={i} fill={AGING_COLORS[i % AGING_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => formatMoney(v)} />
+              <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
@@ -189,7 +189,7 @@ export function FinanceDashboardClient() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => formatMoney(v)} />
+                <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
                 <Legend />
                 <Bar dataKey="revenue" name="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="expenses" name="Expenses" fill="#f97316" radius={[4, 4, 0, 0]} />

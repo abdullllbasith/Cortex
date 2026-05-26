@@ -25,7 +25,7 @@ type POStatus =
   | 'RECEIVED'
   | 'CANCELLED'
 
-interface POListItem {
+interface POListItem extends Record<string, unknown> {
   id: string
   poNumber: string
   status: POStatus
@@ -269,11 +269,11 @@ export function PurchaseOrdersPageClient() {
 
             <DataTable
               columns={columns}
-              data={items as unknown as Record<string, unknown>[]}
+              data={items}
               loading={isLoading}
               keyField="id"
               onRowClick={(row) =>
-                router.push(`/inventory/purchase-orders/${(row as POListItem).id}`)
+                router.push(`/inventory/purchase-orders/${row.id}`)
               }
               emptyTitle="No purchase orders"
               emptyDescription="Create your first purchase order to start receiving inventory."
@@ -284,7 +284,7 @@ export function PurchaseOrdersPageClient() {
                   onClick={(e) => {
                     e.stopPropagation()
                     window.open(
-                      `/api/inventory/purchase-orders/${(row as POListItem).id}/pdf`,
+                      `/api/inventory/purchase-orders/${row.id}/pdf`,
                       '_blank',
                     )
                   }}

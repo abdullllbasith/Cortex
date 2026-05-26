@@ -156,7 +156,7 @@ export function AccountsPageClient() {
 
   const seedChart = async () => {
     try {
-      const res = await apiClient.post('/finance/accounts/seed', {})
+      const res = await apiClient.post<{ seeded?: boolean }>('/finance/accounts/seed', {})
       toast.success(res.seeded ? 'Chart of accounts created' : 'Chart already exists')
       mutate()
     } catch (err) {

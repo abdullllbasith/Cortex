@@ -164,14 +164,14 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     {
       id: 'createdAt',
       header: 'Date',
-      cell: ({ row }) => new Date((row as LedgerEntry).createdAt).toLocaleString(),
+      cell: ({ row }) => new Date((row as unknown as LedgerEntry).createdAt).toLocaleString(),
     },
     { id: 'transactionType', header: 'Type', accessorKey: 'transactionType' },
     { id: 'quantity', header: 'Qty', accessorKey: 'quantity', type: 'number' },
     {
       id: 'warehouse',
       header: 'Warehouse',
-      cell: ({ row }) => (row as LedgerEntry).warehouse.name,
+      cell: ({ row }) => (row as unknown as LedgerEntry).warehouse.name,
     },
     { id: 'notes', header: 'Notes', accessorKey: 'notes' },
   ]
@@ -274,14 +274,14 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                   <div key={key}>
                     {key === 'barcode' ? (
                       <BarcodeField
-                        value={String((p as Record<string, unknown>).barcode ?? '')}
+                        value={String((p as unknown as Record<string, unknown>).barcode ?? '')}
                         onChange={(barcode) => setForm((f) => ({ ...f, barcode }))}
                       />
                     ) : (
                       <>
                         <label className="text-xs text-slate-500 mb-1 block">{label}</label>
                         <Input
-                          defaultValue={String((p as Record<string, unknown>)[key] ?? '')}
+                          defaultValue={String((p as unknown as Record<string, unknown>)[key] ?? '')}
                           onChange={(e) => {
                             const val =
                               key.includes('Price') || key === 'taxRate'

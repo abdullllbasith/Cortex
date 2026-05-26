@@ -131,9 +131,9 @@ export class KnowledgeRepository {
     void embedSingleRecord(tenantId, 'customer', record.id)
 
     void triggerManager.initialize().then(() => {
-      emitSaiosEvent(tenantId, 'new_customer', toWorkflowCustomerPayload(record))
+      emitSaiosEvent(tenantId, 'new_customer', toWorkflowCustomerPayload(record) as unknown as Record<string, unknown>)
     }).catch(() => {
-      emitSaiosEvent(tenantId, 'new_customer', toWorkflowCustomerPayload(record))
+      emitSaiosEvent(tenantId, 'new_customer', toWorkflowCustomerPayload(record) as unknown as Record<string, unknown>)
     })
 
     return record

@@ -157,7 +157,6 @@ export async function getKnowledgeProduct(tenantId: string, productId: string) {
     isActive: product.isActive,
     onHand,
     stockHealth: classifyStock(onHand, reorderPoint),
-    minSellingPrice: product.minSellingPrice ? toNumber(product.minSellingPrice) : null,
     embeddingStatus: product.embeddingStatus,
     embeddingUpdatedAt: product.embeddingUpdatedAt?.toISOString() ?? null,
     createdAt: product.createdAt.toISOString(),

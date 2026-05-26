@@ -34,12 +34,12 @@ export const Checkbox = forwardRef<
         className={cn(
           'peer h-4 w-4 shrink-0 rounded border transition-colors',
           'focus-visible:outline-none focus-visible:ring-2',
-          'focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+          'focus-visible:ring-[#5BA8A0] focus-visible:ring-offset-2',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          'data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600',
-          'data-[state=indeterminate]:bg-indigo-600 data-[state=indeterminate]:border-indigo-600',
-          'dark:data-[state=checked]:bg-indigo-500 dark:data-[state=checked]:border-indigo-500',
-          'dark:data-[state=indeterminate]:bg-indigo-500 dark:data-[state=indeterminate]:border-indigo-500',
+          'data-[state=checked]:bg-[#5BA8A0] data-[state=checked]:border-[#5BA8A0]',
+          'data-[state=indeterminate]:bg-[#5BA8A0] data-[state=indeterminate]:border-[#5BA8A0]',
+          'dark:data-[state=checked]:bg-[#7ECAC3] dark:data-[state=checked]:border-[#7ECAC3]',
+          'dark:data-[state=indeterminate]:bg-[#7ECAC3] dark:data-[state=indeterminate]:border-[#7ECAC3]',
           error
             ? 'border-red-500 dark:border-red-400'
             : 'border-slate-300 dark:border-slate-600',

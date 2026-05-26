@@ -24,6 +24,7 @@ export interface NavItem {
   icon: LucideIcon
   /** Optional badge label (count or text) */
   badge?: string | number
+  badgeVariant?: 'default' | 'danger'
   /** Grayed out — not yet implemented */
   placeholder?: boolean
 }
@@ -33,53 +34,59 @@ export interface NavSection {
   items: NavItem[]
 }
 
+/** Core ERP modules — fully supported in production */
+const CORE_NAV: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Inventory', href: '/inventory', icon: Package },
+  { label: 'Reorder', href: '/inventory/reorder', icon: RefreshCw, badgeVariant: 'danger' },
+  { label: 'CRM', href: '/crm', icon: Users2 },
+  { label: 'Sales', href: '/sales/quotes', icon: ShoppingCart },
+  { label: 'Finance', href: '/finance', icon: DollarSign },
+  { label: 'Settings', href: '/settings', icon: Settings },
+]
+
+/** Advanced modules — visible but marked coming soon */
+const ADVANCED_NAV: NavItem[] = [
+  { label: 'AI Executive Assistant', href: '/assistant', icon: Bot, placeholder: true },
+  { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen, placeholder: true },
+  { label: 'Agents', href: '/agents', icon: Cpu, placeholder: true },
+  { label: 'Analytics', href: '/analytics', icon: BarChart3, placeholder: true },
+  { label: 'Predictions', href: '/predictions', icon: TrendingUp, placeholder: true },
+  { label: 'Workflows', href: '/workflows', icon: GitBranch, placeholder: true },
+  { label: 'HR', href: '/hr', icon: UserSquare2, placeholder: true },
+  { label: 'Notifications', href: '/notifications', icon: Bell, placeholder: true },
+  { label: 'Alerts', href: '/alerts', icon: Bell, placeholder: true },
+  { label: 'Billing', href: '/settings/billing', icon: CreditCard, placeholder: true },
+]
+
 export const navSections: NavSection[] = [
   {
     label: 'OVERVIEW',
-    items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    ],
-  },
-  {
-    label: 'INTELLIGENCE',
-    items: [
-      { label: 'AI Executive Assistant', href: '/assistant', icon: Bot },
-      { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
-      { label: 'Agents',         href: '/agents',    icon: Cpu },
-    ],
-  },
-  {
-    label: 'ANALYTICS',
-    items: [
-      { label: 'Analytics',   href: '/analytics',   icon: BarChart3 },
-      { label: 'Predictions', href: '/predictions', icon: TrendingUp },
-    ],
+    items: [CORE_NAV[0]],
   },
   {
     label: 'OPERATIONS',
-    items: [
-      { label: 'Workflows', href: '/workflows', icon: GitBranch },
-      { label: 'Inventory', href: '/inventory', icon: Package },
-      { label: 'Reorder', href: '/inventory/reorder', icon: RefreshCw, badgeVariant: 'danger' },
-    ],
+    items: CORE_NAV.slice(1, 3),
   },
   {
     label: 'BUSINESS',
-    items: [
-      { label: 'CRM', href: '/crm', icon: Users2 },
-      { label: 'Sales', href: '/sales/quotes', icon: ShoppingCart },
-      { label: 'Finance', href: '/finance', icon: DollarSign },
-      { label: 'HR',      href: '/hr',      icon: UserSquare2 },
-    ],
+    items: CORE_NAV.slice(3, 6),
   },
   {
     label: 'PLATFORM',
-    items: [
-      { label: 'Notifications', href: '/notifications', icon: Bell },
-      { label: 'Alerts', href: '/alerts', icon: Bell },
-      { label: 'Settings', href: '/settings',          icon: Settings },
-      { label: 'Billing',  href: '/settings/billing',  icon: CreditCard },
-    ],
+    items: [CORE_NAV[6], ...ADVANCED_NAV.slice(6)],
+  },
+  {
+    label: 'INTELLIGENCE',
+    items: ADVANCED_NAV.slice(0, 3),
+  },
+  {
+    label: 'ANALYTICS & AUTOMATION',
+    items: ADVANCED_NAV.slice(3, 6),
+  },
+  {
+    label: 'PEOPLE',
+    items: [ADVANCED_NAV[6]],
   },
 ]
 

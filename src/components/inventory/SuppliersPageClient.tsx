@@ -21,7 +21,7 @@ type SupplierType = 'MANUFACTURER' | 'DISTRIBUTOR' | 'WHOLESALER' | 'SERVICE_PRO
 type PaymentTerms = 'IMMEDIATE' | 'NET15' | 'NET30' | 'NET45' | 'NET60'
 type SortKey = 'name' | 'reliability' | 'lastOrder'
 
-interface SupplierListItem {
+interface SupplierListItem extends Record<string, unknown> {
   id: string
   code: string
   name: string
@@ -208,7 +208,7 @@ export function SuppliersPageClient() {
     <div className="flex flex-col gap-5 p-5 lg:p-6">
       <PageHeader
         title="Suppliers"
-        description="Manage supplier master data, contacts, and performance"
+        subtitle="Manage supplier master data, contacts, and performance"
         breadcrumbs={[
           { label: 'Inventory', href: '/inventory' },
           { label: 'Suppliers' },
@@ -335,7 +335,7 @@ export function SuppliersPageClient() {
             loading={isLoading}
             keyField="id"
             skeletonRowCount={8}
-            onRowClick={(row) => router.push(`/inventory/suppliers/${(row as SupplierListItem).id}`)}
+            onRowClick={(row) => router.push(`/inventory/suppliers/${row.id}`)}
             rowActions={(row) => (
               <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                 <Link

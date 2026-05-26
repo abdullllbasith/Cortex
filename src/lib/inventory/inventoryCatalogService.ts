@@ -127,7 +127,7 @@ export async function getProductDetail(tenantId: string, productId: string, opts
     where: { id: productId, tenantId },
     include: {
       category: true,
-      supplier: { select: { id: true, name: true, supplierInfo: true } },
+      supplier: { select: { id: true, name: true, email: true, address: true } },
       variants: {
         include: {
           stockBalances: {
@@ -576,7 +576,7 @@ export async function bulkUpdateProducts(
 ) {
   if (!productIds.length) throw new Error('No products selected')
 
-  const data: Prisma.ProductUpdateManyMutationInput = {}
+  const data: Prisma.ProductUncheckedUpdateManyInput = {}
   if (updates.categoryId !== undefined) data.categoryId = updates.categoryId
   if (updates.supplierId !== undefined) data.supplierId = updates.supplierId
   if (updates.costPrice !== undefined) data.costPrice = toDecimal(updates.costPrice)

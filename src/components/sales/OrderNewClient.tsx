@@ -263,7 +263,7 @@ export function OrderNewClient() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <StockHint productId={item.productId} />
+                        <StockHint productId={item.productId ?? null} />
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{item.lineTotal.toFixed(2)}</td>
                       <td className="px-2 py-2">

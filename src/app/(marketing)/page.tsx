@@ -1,5 +1,14 @@
 import type { Metadata } from 'next'
-import { HeroSection, FeaturesSection, SocialProofSection } from '@/components/marketing/LandingSections'
+import {
+  HeroSection,
+  FeaturesSection,
+  SocialProofSection,
+  HowItWorksSection,
+  IntegrationsSection,
+  TestimonialsSection,
+  SecuritySection,
+  CTABannerSection,
+} from '@/components/marketing/LandingSections'
 import { PricingSection } from '@/components/marketing/PricingFooter'
 
 export const metadata: Metadata = {
@@ -12,7 +21,12 @@ export default function LandingPage() {
     <>
       <HeroSection />
       <SocialProofSection />
+      <HowItWorksSection />
       <FeaturesSection />
+      <IntegrationsSection />
+      <TestimonialsSection />
+      <SecuritySection />
+      <CTABannerSection />
       <PricingSection />
     </>
   )

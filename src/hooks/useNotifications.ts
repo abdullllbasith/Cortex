@@ -191,8 +191,8 @@ export function useNotificationUnreadBadge() {
       const id = window.requestIdleCallback(run, { timeout: 3000 })
       return () => window.cancelIdleCallback(id)
     }
-    const t = window.setTimeout(run, 2000)
-    return () => window.clearTimeout(t)
+    const t = setTimeout(run, 2000)
+    return () => clearTimeout(t)
   }, [])
 
   const { data } = useSWR<NotificationListResponse>(

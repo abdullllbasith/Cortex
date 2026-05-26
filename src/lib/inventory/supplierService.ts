@@ -5,9 +5,10 @@ import {
   SupplierType,
 } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
+import { createClient } from '@supabase/supabase-js'
 import { prisma } from '@/lib/db/prisma'
 import { encryptField, decryptField } from '@/lib/security/encryption'
-import { createSupabaseServerClient } from '@/lib/auth/supabaseServer'
+import { supabaseOptionsForRuntime } from '@/lib/supabase/nodeTransport'
 import { computeSupplierPerformanceAnalytics } from '@/lib/inventory/supplierPerformanceAnalytics'
 import type {
   SupplierContactInput,
@@ -69,13 +70,25 @@ export function maskBankDetails(enc: string | null, tenantId: string): Record<st
   }
 }
 
+/** Re-authenticate tenant user password via Supabase (no local password hash stored). */
 export async function verifyUserPassword(userId: string, password: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anonKey) return false
+
+  const user = await prisma.user.findFirst({
     where: { id: userId },
-    select: { passwordHash: true },
+    select: { email: true },
   })
-  if (!user?.passwordHash) return false
-  return verifyPassword(password, user.passwordHash)
+  if (!user?.email) return false
+  const email = user.email
+
+  const supabase = createClient(url, anonKey, {
+    ...supabaseOptionsForRuntime(),
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  return !error
 }
 
 function serializeSupplier(
@@ -300,7 +313,7 @@ export async function getSupplier(
 
   let bankDetails: Record<string, unknown> | null = null
   if (options?.unlockPassword && options.actorId) {
-    const ok = await verifyUserPassword(options.actorId, tenantId, options.unlockPassword)
+    const ok = await verifyUserPassword(options.actorId, options.unlockPassword)
     if (ok) {
       bankDetails = mapBankDetails(row.bankDetailsEnc, tenantId)
     } else {

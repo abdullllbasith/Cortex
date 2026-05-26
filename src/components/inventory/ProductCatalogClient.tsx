@@ -216,7 +216,7 @@ export function ProductCatalogClient() {
         id: 'select',
         header: '',
         cell: ({ row }) => {
-          const p = row as CatalogProduct
+          const p = row as unknown as CatalogProduct
           return (
             <input
               type="checkbox"
@@ -235,13 +235,13 @@ export function ProductCatalogClient() {
       {
         id: 'category',
         header: 'Category',
-        cell: ({ row }) => (row as CatalogProduct).category?.name ?? '—',
+        cell: ({ row }) => (row as unknown as CatalogProduct).category?.name ?? '—',
       },
       {
         id: 'stock',
         header: 'Stock',
         cell: ({ row }) => {
-          const p = row as CatalogProduct
+          const p = row as unknown as CatalogProduct
           return (
             <StockLevelBar onHand={p.onHand} reorderPoint={p.reorderPoint} className="min-w-[120px]" />
           )
@@ -250,14 +250,14 @@ export function ProductCatalogClient() {
       {
         id: 'health',
         header: 'Status',
-        cell: ({ row }) => <StockBadge health={(row as CatalogProduct).stockHealth} />,
+        cell: ({ row }) => <StockBadge health={(row as unknown as CatalogProduct).stockHealth} />,
       },
       {
         id: 'price',
         header: 'Price',
         cell: ({ row }) =>
           new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-            (row as CatalogProduct).sellingPrice,
+            (row as unknown as CatalogProduct).sellingPrice,
           ),
       },
     ],
@@ -356,10 +356,10 @@ export function ProductCatalogClient() {
               <option value="out_of_stock">Out of Stock</option>
             </select>
             <div className="ml-auto flex gap-1 border rounded-lg p-1">
-              <Button variant={view === 'grid' ? 'default' : 'ghost'} size="sm" onClick={() => setView('grid')}>
+              <Button variant={view === 'grid' ? 'primary' : 'ghost'} size="sm" onClick={() => setView('grid')}>
                 <Grid3X3 className="h-4 w-4" />
               </Button>
-              <Button variant={view === 'table' ? 'default' : 'ghost'} size="sm" onClick={() => setView('table')}>
+              <Button variant={view === 'table' ? 'primary' : 'ghost'} size="sm" onClick={() => setView('table')}>
                 <List className="h-4 w-4" />
               </Button>
             </div>
@@ -392,7 +392,7 @@ export function ProductCatalogClient() {
                 data={products as unknown as Record<string, unknown>[]}
                 loading={isLoading}
                 keyField="id"
-                onRowClick={(row) => router.push(`/inventory/products/${(row as CatalogProduct).id}`)}
+                onRowClick={(row) => router.push(`/inventory/products/${(row as unknown as CatalogProduct).id}`)}
               />
             </CardBody>
           </Card>

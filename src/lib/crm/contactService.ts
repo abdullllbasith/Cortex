@@ -390,7 +390,7 @@ export async function scheduleFollowUp(
     await notificationService.send({
       tenantId,
       userId: assignTo,
-      type: NotificationType.TASK,
+      type: NotificationType.REMINDER,
       severity: NotificationSeverity.INFO,
       title: 'Follow-up assigned',
       body: `Follow up with ${contactName} on ${date.toLocaleDateString()}`,

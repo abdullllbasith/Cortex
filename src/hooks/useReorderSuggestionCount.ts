@@ -19,8 +19,8 @@ export function useReorderSuggestionCount(): number {
       const id = window.requestIdleCallback(run, { timeout: 2500 })
       return () => window.cancelIdleCallback(id)
     }
-    const t = window.setTimeout(run, 1500)
-    return () => window.clearTimeout(t)
+    const t = setTimeout(run, 1500)
+    return () => clearTimeout(t)
   }, [])
 
   const { data } = useSWR<ReorderCountResponse>(

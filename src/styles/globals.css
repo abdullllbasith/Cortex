@@ -10,6 +10,12 @@
 @import "tailwindcss";
 @config "../../tailwind.config.ts";
 
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    DESIGN TOKENS — CSS Custom Properties
    Semantic values adapt via .dark class (class-based dark mode).
@@ -36,13 +42,13 @@
   --color-text-inverse:   #ffffff;
 
   /* Brand / Action */
-  --color-brand:          #4f46e5;  /* indigo-600 */
-  --color-brand-hover:    #6366f1;  /* indigo-500 */
-  --color-brand-active:   #4338ca;  /* indigo-700 */
-  --color-brand-subtle:   #eef2ff;  /* indigo-50  */
-  --color-brand-muted:    #e0e7ff;  /* indigo-100 */
-  --color-accent:         #0ea5e9;  /* sky-500 */
-  --color-chat-user-bubble:       #4f46e5;
+  --color-brand:          #5BA8A0;  /* Softora teal */
+  --color-brand-hover:    #4D9990;  /* teal darker hover */
+  --color-brand-active:   #3D8E87;  /* teal active */
+  --color-brand-subtle:   #F0F7F6;  /* teal-50 */
+  --color-brand-muted:    #E0F2F0;  /* teal-100 */
+  --color-accent:         #7ECAC3;  /* teal light */
+  --color-chat-user-bubble:       #5BA8A0;
   --color-chat-user-bubble-text:  #ffffff;
 
   /* Semantic */
@@ -70,12 +76,12 @@
   --color-sidebar-border: #1e293b;
 
   /* Focus ring */
-  --focus-ring-color:   #6366f1;  /* indigo-500 */
+  --focus-ring-color:   #5BA8A0;  /* Softora teal */
   --focus-ring-offset:  2px;
 
   /* Selection */
-  --selection-bg:    #e0e7ff;  /* indigo-100 */
-  --selection-color: #312e81;  /* indigo-900 */
+  --selection-bg:    #E0F2F0;  /* teal-100 */
+  --selection-color: #1E2D3D;  /* navy */
 
   /* Scrollbar */
   --scrollbar-track: #f1f5f9;  /* slate-100 */
@@ -115,13 +121,13 @@
   --color-text-inverse:   #0f172a;
 
   /* Brand / Action */
-  --color-brand:          #6366f1;  /* indigo-500 (brighter in dark) */
-  --color-brand-hover:    #818cf8;  /* indigo-400 */
-  --color-brand-active:   #4f46e5;  /* indigo-600 */
-  --color-brand-subtle:   #1e1b4b;  /* indigo-950 */
-  --color-brand-muted:    #312e81;  /* indigo-900 */
-  --color-accent:         #38bdf8;  /* sky-400 */
-  --color-chat-user-bubble:       #6366f1;
+  --color-brand:          #7ECAC3;  /* teal-400 (brighter in dark) */
+  --color-brand-hover:    #5BA8A0;  /* teal-500 */
+  --color-brand-active:   #3D8E87;  /* teal-600 */
+  --color-brand-subtle:   #0d2420;  /* teal-950 */
+  --color-brand-muted:    #163028;  /* teal-900 */
+  --color-accent:         #7ECAC3;  /* teal-300 */
+  --color-chat-user-bubble:       #5BA8A0;
   --color-chat-user-bubble-text:  #ffffff;
 
   /* Semantic */
@@ -335,15 +341,13 @@ code:not(pre > code) {
 }
 
 a {
-  color: var(--color-brand);
+  color: inherit;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 a:hover {
-  color: var(--color-brand-hover);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
 }
 
 hr {
@@ -753,3 +757,83 @@ button:disabled {
   70%  {             transform: scale(0.9); }
   100% {             transform: scale(1); }
 }
+
+/* ─── Auth form panel — always light regardless of OS dark mode ─────────────
+   This class is applied to the right panel of the auth split shell so all
+   form elements (inputs, buttons, labels, text) always render in light style.
+   ────────────────────────────────────────────────────────────────────────── */
+.auth-form-panel input,
+.auth-form-panel select,
+.auth-form-panel textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+.auth-form-panel input::placeholder,
+.auth-form-panel textarea::placeholder {
+  color: #94a3b8 !important;
+}
+.auth-form-panel input:focus,
+.auth-form-panel select:focus,
+.auth-form-panel textarea:focus {
+  border-color: #5BA8A0 !important;
+}
+
+/* Secondary buttons (Google/Microsoft OAuth) */
+.auth-form-panel button[class*="dark:bg-slate"],
+.auth-form-panel button[class*="dark:border-slate"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #374151 !important;
+}
+.auth-form-panel button[class*="dark:bg-slate"]:hover {
+  background-color: #f8fafc !important;
+}
+
+/* All text elements */
+.auth-form-panel label {
+  color: #374151 !important;
+}
+.auth-form-panel h1,
+.auth-form-panel h2,
+.auth-form-panel h3 {
+  color: #0f172a !important;
+}
+.auth-form-panel p,
+.auth-form-panel span:not([class*="text-[#"]):not([class*="text-teal"]):not([class*="text-red"]):not([class*="text-white"]) {
+  color: #64748b;
+}
+
+/* Checkbox label specifically */
+.auth-form-panel [class*="dark:text-slate-300"] {
+  color: #475569 !important;
+}
+.auth-form-panel [class*="dark:text-slate-400"] {
+  color: #64748b !important;
+}
+.auth-form-panel [class*="dark:text-slate-200"] {
+  color: #374151 !important;
+}
+.auth-form-panel [class*="dark:text-slate-100"] {
+  color: #1e293b !important;
+}
+
+/* Stepper circle backgrounds */
+.auth-form-panel [class*="dark:bg-slate-900"] {
+  background-color: #ffffff !important;
+}
+.auth-form-panel [class*="dark:bg-slate-800"] {
+  background-color: #f1f5f9 !important;
+}
+.auth-form-panel [class*="dark:border-slate-700"] {
+  border-color: #e2e8f0 !important;
+}
+.auth-form-panel [class*="dark:border-slate-800"] {
+  border-color: #f1f5f9 !important;
+}
+
+/* Progress bar track */
+.auth-form-panel [class*="dark:bg-slate-800"].h-1\\.5 {
+  background-color: #f1f5f9 !important;
+}
+

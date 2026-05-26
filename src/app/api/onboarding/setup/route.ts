@@ -3,6 +3,7 @@ import { withTenantAuth, handleRouteError } from '@/lib/knowledge/apiHandler'
 import { apiSuccess } from '@/lib/knowledge/response'
 import { onboardingSetupSchema } from '@/lib/finance/financeSchemas'
 import { seedDefaultAccounts } from '@/lib/finance/chartOfAccountsService'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { parseTenantSettings } from '@/lib/settings/types'
 
@@ -37,16 +38,18 @@ export const POST = withTenantAuth(async (request, { auth }) => {
       currentSettings.fiscalYearStartMonth ??
       1
 
+    const nextSettings = {
+      ...currentSettings,
+      currency,
+      fiscalYearStartMonth,
+      ...(body.timezone ? { timezone: body.timezone } : {}),
+    }
+
     await prisma.tenant.update({
       where: { id: auth.tenantId },
       data: {
         ...(body.businessName ? { name: body.businessName } : {}),
-        settings: {
-          ...currentSettings,
-          currency,
-          fiscalYearStartMonth,
-          ...(body.timezone ? { timezone: body.timezone } : {}),
-        },
+        settings: nextSettings as unknown as Prisma.InputJsonValue,
       },
     })
 

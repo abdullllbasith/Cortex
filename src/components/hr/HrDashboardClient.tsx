@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Check,
   X,
+  ClipboardList,
 } from 'lucide-react'
 import {
   PageHeader,
@@ -186,7 +187,7 @@ export function HrDashboardClient() {
           <KpiCard icon={Users} label="Total employees" value={data.kpis.totalEmployees} />
           <KpiCard icon={CalendarOff} label="On leave today" value={data.kpis.onLeaveToday} />
           <KpiCard icon={UserPlus} label="New this month" value={data.kpis.newThisMonth} />
-          <KpiCard icon={ClipboardList} label="Pending leave approvals" value={data.kpis.pendingLeaveApprovals} />
+          <KpiCard icon={ClipboardList} label="Pending leave approvals" value={data.pendingLeave.length} />
           <KpiCard icon={Calendar} label="Next payroll" value={nextPayroll} />
         </div>
 

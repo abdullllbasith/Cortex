@@ -11,7 +11,7 @@ import {
   type TenantQuotaOverrides,
 } from '@/lib/admin/tenantSettingsAdmin'
 
-export interface TenantListItem {
+export interface TenantListItem extends Record<string, unknown> {
   id: string
   name: string
   slug: string

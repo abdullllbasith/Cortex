@@ -4,7 +4,7 @@ import type { TenantBranding } from '@/lib/branding/tenantBranding'
 import type { UserProfileDTO } from '@/lib/settings/types'
 import { useSessionStore } from '@/store/sessionStore'
 
-export interface AuthSessionUser extends User {
+export interface AuthSessionUser extends Omit<User, 'avatarUrl'> {
   avatarUrl?: string | null
 }
 

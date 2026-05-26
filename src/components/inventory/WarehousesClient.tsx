@@ -66,6 +66,11 @@ export function WarehousesClient() {
   const [qty, setQty] = useState(1)
   const [scheduledDate, setScheduledDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newCode, setNewCode] = useState('')
+  const [newCity, setNewCity] = useState('')
+  const [newDefault, setNewDefault] = useState(true)
 
   const { data: detail } = useSWR<WarehouseDetail>(
     detailId ? `/inventory/warehouses/${detailId}` : null,
@@ -108,6 +113,40 @@ export function WarehousesClient() {
     }
   }
 
+  const createWarehouse = async () => {
+    if (!newName.trim() || !newCode.trim()) {
+      toast.error('Name and code are required')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/inventory/warehouses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: newName.trim(),
+          code: newCode.trim(),
+          isDefault: newDefault,
+          address: newCity.trim() ? { city: newCity.trim() } : {},
+        }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        toast.error(json.error?.message ?? 'Failed to create warehouse')
+        return
+      }
+      toast.success('Warehouse created')
+      setCreateOpen(false)
+      setNewName('')
+      setNewCode('')
+      setNewCity('')
+      mutate()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <PageHeader
@@ -118,7 +157,10 @@ export function WarehousesClient() {
           { label: 'Warehouses' },
         ]}
         actions={
-          <Button onClick={() => setTransferOpen(true)}>Stock Transfer</Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setCreateOpen(true)}>Add Warehouse</Button>
+            <Button onClick={() => setTransferOpen(true)}>Stock Transfer</Button>
+          </div>
         }
       />
 
@@ -168,7 +210,12 @@ export function WarehousesClient() {
             </Card>
           ))}
           {warehouses.length === 0 && (
-            <p className="text-slate-500 col-span-full">No warehouses configured. Add one via API or seed data.</p>
+            <p className="text-slate-500 col-span-full">
+              No warehouses yet.{' '}
+              <button type="button" className="text-indigo-600 hover:underline" onClick={() => setCreateOpen(true)}>
+                Add your first warehouse
+              </button>
+            </p>
           )}
         </div>
       </div>
@@ -248,6 +295,25 @@ export function WarehousesClient() {
             <Button onClick={() => submitTransfer(true)} disabled={submitting}>
               Transfer Now
             </Button>
+          </ModalFooter>
+        </ModalContent>
+      </ModalRoot>
+
+      <ModalRoot open={createOpen} onOpenChange={setCreateOpen}>
+        <ModalContent>
+          <ModalHeader><ModalTitle>Add Warehouse</ModalTitle></ModalHeader>
+          <ModalBody className="space-y-4">
+            <Input label="Name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Main Warehouse" />
+            <Input label="Code" value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="WH-MAIN" />
+            <Input label="City (optional)" value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="New York" />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={newDefault} onChange={(e) => setNewDefault(e.target.checked)} />
+              Set as default warehouse
+            </label>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={() => void createWarehouse()} loading={submitting}>Create</Button>
           </ModalFooter>
         </ModalContent>
       </ModalRoot>

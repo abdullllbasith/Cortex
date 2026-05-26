@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
+import { Prisma } from '@prisma/client'
 import { calculateInventoryValue } from './valuationService'
 
 function toNumber(value: { toNumber(): number } | number | null | undefined): number {
@@ -116,7 +117,7 @@ export async function createWarehouse(
       tenantId,
       name: data.name,
       code: data.code.toUpperCase(),
-      address: data.address ?? {},
+      address: (data.address ?? {}) as Prisma.InputJsonValue,
       isDefault: data.isDefault ?? false,
       managerId: data.managerId ?? null,
     },

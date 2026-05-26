@@ -181,7 +181,7 @@ export function ReorderPageClient() {
       id: 'productName',
       header: 'Product',
       cell: ({ row }) => {
-        const r = row as ReorderSuggestion
+        const r = row as unknown as ReorderSuggestion
         return (
           <div>
             <p className="font-medium text-sm">{r.productName}</p>
@@ -194,7 +194,7 @@ export function ReorderPageClient() {
       id: 'quantityOnHand',
       header: 'Current Stock',
       cell: ({ row }) => {
-        const r = row as ReorderSuggestion
+        const r = row as unknown as ReorderSuggestion
         return (
           <span className={r.quantityOnHand <= 0 ? 'text-red-600 font-semibold' : ''}>
             {r.quantityOnHand}
@@ -206,18 +206,18 @@ export function ReorderPageClient() {
     {
       id: 'unitCost',
       header: 'Unit Cost',
-      cell: ({ row }) => formatMoney((row as ReorderSuggestion).unitCost),
+      cell: ({ row }) => formatMoney((row as unknown as ReorderSuggestion).unitCost),
     },
     {
       id: 'lineTotal',
       header: 'Line Total',
-      cell: ({ row }) => formatMoney((row as ReorderSuggestion).lineTotal),
+      cell: ({ row }) => formatMoney((row as unknown as ReorderSuggestion).lineTotal),
     },
     {
       id: 'urgency',
       header: 'Urgency',
       cell: ({ row }) => {
-        const r = row as ReorderSuggestion
+        const r = row as unknown as ReorderSuggestion
         return (
           <Badge variant={r.urgency === 'critical' ? 'danger' : 'warning'}>
             {r.urgency === 'critical' ? 'Critical' : 'Warning'}

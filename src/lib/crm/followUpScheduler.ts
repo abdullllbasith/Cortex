@@ -47,7 +47,7 @@ export async function runFollowUpDueCheck(tenantId: string): Promise<number> {
         .send({
           tenantId,
           userId: contact.ownerId,
-          type: NotificationType.TASK,
+          type: NotificationType.REMINDER,
           severity: NotificationSeverity.WARNING,
           title: 'Follow-up overdue',
           body: `${contact.firstName} ${contact.lastName} — follow-up was due ${contact.nextFollowUpAt?.toLocaleDateString() ?? 'now'}`,
@@ -96,7 +96,7 @@ export async function runFollowUpDueCheck(tenantId: string): Promise<number> {
         .send({
           tenantId,
           userId: activity.assignedTo,
-          type: NotificationType.TASK,
+          type: NotificationType.REMINDER,
           severity: NotificationSeverity.WARNING,
           title: 'Scheduled activity due',
           body: activity.subject + (contactName ? ` — ${contactName}` : ''),

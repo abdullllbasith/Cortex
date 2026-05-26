@@ -182,6 +182,21 @@ Revenue is recognized from invoice payments in the ledger. All figures come from
     return { ...report, periodLabel: label }
   }
 
+  /** P&L-based expense rollup for dashboard summaries (reserved for anomaly hooks). */
+  async getExpenses(period: string) {
+    const pl = await this.getProfitAndLoss(period)
+    return {
+      periodLabel: pl.periodLabel,
+      expenseTotal: pl.expenseTotal,
+      anomalies: [] as Array<{ reason: string }>,
+    }
+  }
+
+  /** Placeholder hook for cash forecasting; extend with treasury data as needed. */
+  async getCashflow() {
+    return { alerts: [] as string[] }
+  }
+
   async createInvoice(contactId: string, items: Array<Record<string, unknown>>) {
     if (!contactId || !items.length) throw new Error('contactId and items are required')
 

@@ -4,7 +4,7 @@ import { PLAN_LIMITS } from '@/lib/settings/billingService'
 import { calculatePipelineValue, getDefaultPipeline, parseStages } from '@/lib/crm/pipelineService'
 import { getLowStockSummaryForDashboard } from '@/lib/inventory/reorderService'
 import { computeSalesMetrics, computeSalesTimeseries, getRecentTransactions } from './aggregationPipeline'
-import { resolveDateRange, fillDailyTimeseriesGaps } from './periodUtils'
+import { resolveDateRange, fillDailyTimeseriesGaps, type DateRange } from './periodUtils'
 
 function toNumber(v: { toNumber(): number } | number | null | undefined): number {
   if (v == null) return 0
@@ -21,12 +21,13 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
   const fourteenDaysAgo = new Date()
   fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13)
   fourteenDaysAgo.setHours(0, 0, 0, 0)
-  const fourteenRange = {
+  const fourteenRange: DateRange = {
     start: fourteenDaysAgo,
     end: new Date(),
     label: '14d',
     previousStart: fourteenDaysAgo,
     previousEnd: new Date(),
+    period: 'custom',
   }
 
   const dayStart = new Date()

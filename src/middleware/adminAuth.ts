@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { AdminRole } from '@prisma/client'
+import type { AdminRole, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { apiError } from '@/lib/knowledge/response'
 import { ADMIN_TOKEN_COOKIE, verifyAdminAccessToken } from '@/lib/auth/adminJwt'
@@ -200,7 +200,7 @@ export async function logAdminAction(
         action,
         targetType: opts.targetType ?? null,
         targetId: opts.targetId ?? null,
-        details: opts.details ?? {},
+        details: (opts.details ?? {}) as Prisma.InputJsonValue,
         ipAddress: opts.ipAddress ?? null,
       },
     })

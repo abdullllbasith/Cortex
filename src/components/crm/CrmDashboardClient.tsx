@@ -172,7 +172,7 @@ export function CrmDashboardClient() {
                         <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
                         <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                         <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                        <Tooltip formatter={(v: number) => [formatMoney(v), 'Expected']} />
+                        <Tooltip formatter={(v) => [formatMoney(Number(v ?? 0)), 'Expected']} />
                         <Bar dataKey="expectedRevenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
