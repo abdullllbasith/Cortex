@@ -30,6 +30,13 @@ function toDecimal(v: number): Decimal {
   return new Decimal(v)
 }
 
+function monthStart() {
+  const d = new Date()
+  d.setDate(1)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 async function logOrderAudit(
   tenantId: string,
   orderId: string,
@@ -96,7 +103,13 @@ export async function listOrders(
   if (statusFilter === 'NEW') {
     statusWhere = { in: [SalesOrderStatus.DRAFT, SalesOrderStatus.CONFIRMED] }
   } else if (statusFilter === 'PROCESSING') {
-    statusWhere = { in: [SalesOrderStatus.PROCESSING, SalesOrderStatus.PICKING, SalesOrderStatus.PACKED] }
+    statusWhere = { in: [SalesOrderStatus.PROCESSING, SalesOrderStatus.PICKING] }
+  } else if (statusFilter === 'READY_TO_SHIP') {
+    statusWhere = SalesOrderStatus.PACKED
+  } else if (statusFilter === 'CANCELLED') {
+    statusWhere = SalesOrderStatus.CANCELLED
+  } else if (statusFilter === 'DELIVERED_MONTH') {
+    statusWhere = undefined
   } else if (statusFilter && statusFilter !== 'ALL') {
     statusWhere = statusFilter as SalesOrderStatus
   }
@@ -147,6 +160,29 @@ export async function listOrders(
     page,
     limit,
   }
+}
+
+export async function getOrderDashboard(tenantId: string) {
+  const start = monthStart()
+  const [newOrders, processing, readyToShip, deliveredThisMonth, cancelled] = await Promise.all([
+    prisma.salesOrder.count({
+      where: { tenantId, status: { in: [SalesOrderStatus.DRAFT, SalesOrderStatus.CONFIRMED] } },
+    }),
+    prisma.salesOrder.count({
+      where: { tenantId, status: { in: [SalesOrderStatus.PROCESSING, SalesOrderStatus.PICKING] } },
+    }),
+    prisma.salesOrder.count({
+      where: { tenantId, status: SalesOrderStatus.PACKED },
+    }),
+    prisma.salesOrder.count({
+      where: { tenantId, deliveredAt: { gte: start } },
+    }),
+    prisma.salesOrder.count({
+      where: { tenantId, status: SalesOrderStatus.CANCELLED },
+    }),
+  ])
+
+  return { newOrders, processing, readyToShip, deliveredThisMonth, cancelled }
 }
 
 export async function getOrder(tenantId: string, id: string) {
