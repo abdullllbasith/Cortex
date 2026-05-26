@@ -40,6 +40,16 @@ async function bootstrapSession(payload: {
     body: JSON.stringify(payload),
     credentials: 'include',
   })
+
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      res.ok
+        ? 'Sign in returned an unexpected response. Please try again.'
+        : 'Sign in is temporarily unavailable. Please try again in a moment.',
+    )
+  }
+
   const json = await res.json()
   if (!res.ok || !json.success) {
     throw new Error(json.error?.message ?? 'Sign in failed')

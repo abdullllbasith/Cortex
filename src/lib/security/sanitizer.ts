@@ -1,9 +1,11 @@
-import DOMPurify from 'isomorphic-dompurify'
-
 const SENSITIVE_KEYS = /password|token|secret|api[_-]?key|authorization|credential/i
 
+/** Server-safe string sanitization — strips HTML without jsdom/DOMPurify. */
 export function sanitizeString(input: string): string {
-  return DOMPurify.sanitize(input, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim()
 }
 
 export function sanitizeInput<T>(value: T): T {
