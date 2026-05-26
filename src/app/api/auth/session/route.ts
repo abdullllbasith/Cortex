@@ -173,6 +173,12 @@ export async function POST(request: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: { message: 'Invalid request body' } }, { status: 400 })
     }
-    return NextResponse.json({ success: false, error: { message: 'Session bootstrap failed' } }, { status: 500 })
+    const message =
+      err instanceof Error &&
+      (err.name === 'PrismaClientInitializationError' ||
+        /Can't reach database server/i.test(err.message))
+        ? 'Database connection failed. Check production DATABASE_URL (use Supabase pooler port 6543).'
+        : 'Session bootstrap failed'
+    return NextResponse.json({ success: false, error: { message } }, { status: 500 })
   }
 }

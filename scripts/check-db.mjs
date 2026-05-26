@@ -1,18 +1,26 @@
 import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.CHECK_DATABASE_URL ?? process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+    },
+  },
+})
 
-async function main() {
-  const [tenants, customers, salesEvents, products] = await Promise.all([
-    prisma.tenant.count(),
-    prisma.customer.count(),
-    prisma.salesEvent.count(),
-    prisma.product.count(),
-  ])
-  const sample = await prisma.tenant.findFirst({ where: { slug: 'acme-corp' }, select: { id: true, name: true } })
-  console.log(JSON.stringify({ sample, counts: { tenants, customers, salesEvents, products } }, null, 2))
+const email = (process.argv[2] ?? 'ab.unireg@gmail.com').trim().toLowerCase()
+
+try {
+  await prisma.$queryRaw`SELECT 1 AS ok`
+  const count = await prisma.user.count()
+  const user = await prisma.user.findFirst({
+    where: { email },
+    select: { id: true, email: true, isActive: true, supabaseId: true, tenant: { select: { slug: true } } },
+  })
+  console.log(JSON.stringify({ userCount: count, user }, null, 2))
+} catch (err) {
+  console.error('DB check failed:', err.message)
+  process.exitCode = 1
+} finally {
+  await prisma.$disconnect()
 }
-
-main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect())

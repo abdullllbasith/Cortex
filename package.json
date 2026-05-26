@@ -15,6 +15,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
+    "db:check": "node scripts/check-db.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:user": "tsx scripts/seed-user-demo.ts",
     "db:seed:hr": "tsx scripts/seed-hr-only.ts",
