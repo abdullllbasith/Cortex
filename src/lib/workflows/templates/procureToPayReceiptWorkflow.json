@@ -1,0 +1,63 @@
+{
+  "triggerType": "EVENT",
+  "triggerConfig": { "eventType": "goods_received" },
+  "nodes": [
+    {
+      "id": "t1",
+      "type": "trigger.event",
+      "position": { "x": 0, "y": 200 },
+      "data": {
+        "label": "GOODS_RECEIVED",
+        "config": { "eventType": "goods_received" }
+      }
+    },
+    {
+      "id": "a-bill",
+      "type": "action.create_bill",
+      "position": { "x": 280, "y": 200 },
+      "data": { "label": "Create Bill From PO", "config": { "poIdField": "poId" } }
+    },
+    {
+      "id": "d-due",
+      "type": "control.delay",
+      "position": { "x": 540, "y": 200 },
+      "data": {
+        "label": "Wait Until Near Due Date",
+        "config": { "duration": 3, "unit": "days" }
+      }
+    },
+    {
+      "id": "a-remind",
+      "type": "action.send_notification",
+      "position": { "x": 800, "y": 200 },
+      "data": {
+        "label": "Payment Reminder (Finance)",
+        "config": {
+          "channel": "email",
+          "recipient": "finance@company.com",
+          "message": "Bill {{billNumber}} for PO {{poNumber}} is due soon. Amount: {{billAmount}}."
+        }
+      }
+    },
+    {
+      "id": "a-pay",
+      "type": "action.record_payment",
+      "position": { "x": 1060, "y": 200 },
+      "data": {
+        "label": "Record Bill Payment",
+        "config": {
+          "targetType": "bill",
+          "billIdField": "billId",
+          "amountField": "billAmount",
+          "defaultMethod": "BANK_TRANSFER"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a-bill" },
+    { "id": "e2", "source": "a-bill", "target": "d-due" },
+    { "id": "e3", "source": "d-due", "target": "a-remind" },
+    { "id": "e4", "source": "a-remind", "target": "a-pay" }
+  ]
+}

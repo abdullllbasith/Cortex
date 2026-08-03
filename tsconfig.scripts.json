@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/lib/db/prisma": ["./src/lib/db/prismaClient.ts"]
+    }
+  }
+}

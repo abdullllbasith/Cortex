@@ -1,0 +1,15 @@
+{
+  "triggerType": "SCHEDULE",
+  "triggerConfig": { "cronExpression": "0 8 1 * *", "timezone": "UTC" },
+  "nodes": [
+    { "id": "t1", "type": "trigger.schedule", "position": { "x": 0, "y": 0 }, "data": { "label": "1st of Month", "config": { "cronExpression": "0 8 1 * *" } } },
+    { "id": "a1", "type": "action.ai_decision", "position": { "x": 250, "y": 0 }, "data": { "label": "Compile Metrics", "config": { "prompt": "Summarize monthly KPIs for executive report", "outputVariable": "reportData" } } },
+    { "id": "a2", "type": "action.generate_document", "position": { "x": 500, "y": 0 }, "data": { "label": "Generate Report PDF", "config": { "documentType": "report", "data": { "metrics": "{{reportData}}" } } } },
+    { "id": "a3", "type": "action.send_notification", "position": { "x": 750, "y": 0 }, "data": { "label": "Email Executives", "config": { "channel": "email", "recipient": "executives@company.com", "message": "Monthly report ready: {{document.url}}" } } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "t1", "target": "a1" },
+    { "id": "e2", "source": "a1", "target": "a2" },
+    { "id": "e3", "source": "a2", "target": "a3" }
+  ]
+}
