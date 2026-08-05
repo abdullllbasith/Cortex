@@ -1,4 +1,4 @@
-# Cortex
+# Cortex - AI-Powered Enterprise Business Management Platform
 
 **Enterprise AI Operating System** — *Your entire business, one AI conversation.*
 
