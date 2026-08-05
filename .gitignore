@@ -33,6 +33,7 @@ debug.log
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -43,5 +44,3 @@ debug.log
 # local tenant uploads (dev fallback when Supabase storage key is absent)
 /public/tenant-uploads/
 next-env.d.ts
-
-.vercel
