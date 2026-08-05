@@ -1,10 +1,9 @@
 # Cortex - AI-Powered Enterprise Business Management Platform
 
-**Enterprise AI Operating System** — *Your entire business, one AI conversation.*
+**Enterprise AI Powered Enterprice Operating System** — *Your entire business, one AI conversation.*
 
 Cortex unifies inventory, CRM/sales, finance, HR, analytics, knowledge, workflows, and specialized AI agents into a single multi-tenant workspace. Teams can query the business in natural language, act on insights (for example draft purchase orders), and plan ahead with predictions — instead of jumping across disconnected tools.
 
-> Package name in this repo is `saios` (legacy internal name). The product brand is **Cortex**.
 
 **Live production:** [cortex-gamma-teal.vercel.app](https://cortex-gamma-teal.vercel.app)
 
