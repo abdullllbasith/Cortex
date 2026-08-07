@@ -1,6 +1,6 @@
 # Cortex - AI-Powered Enterprise Business Management Platform
 
-**Enterprise AI Powered Enterprice Operating System** — *Your entire business, one AI conversation.*
+**Enterprise AI Powered Enterprice Business Operating System** — *Your entire business, one AI conversation.*
 
 Cortex unifies inventory, CRM/sales, finance, HR, analytics, knowledge, workflows, and specialized AI agents into a single multi-tenant workspace. Teams can query the business in natural language, act on insights (for example draft purchase orders), and plan ahead with predictions — instead of jumping across disconnected tools.
 
