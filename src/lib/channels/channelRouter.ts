@@ -227,52 +227,23 @@ async function sendWhatsAppResponse(
   userId: string,
   response: ChannelResponse,
 ): Promise<void> {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneNumberId) {
-    console.warn('[whatsapp] Missing credentials, skipping send')
-    return
-  }
-
+  const { sendWhatsAppText, sendWhatsAppTemplate } = await import('./whatsappSend')
   const to = userId.replace(/^wa:/, '')
 
   if (response.templateName) {
-    await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: response.templateName,
-          language: { code: 'en' },
-          components: response.templateParams
-            ? [{ type: 'body', parameters: Object.values(response.templateParams).map((t) => ({ type: 'text', text: t })) }]
-            : [],
-        },
-      }),
-    })
+    const result = await sendWhatsAppTemplate(
+      to,
+      response.templateName,
+      'en',
+      response.templateParams ? Object.values(response.templateParams) : undefined,
+    )
+    if (!result.ok) console.warn('[whatsapp] template send failed:', result.error)
+    void tenantId
     return
   }
 
-  await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: response.text.slice(0, 4096) },
-    }),
-  })
-
+  const result = await sendWhatsAppText(to, response.text)
+  if (!result.ok) console.warn('[whatsapp] text send failed:', result.error)
   void tenantId
 }
 

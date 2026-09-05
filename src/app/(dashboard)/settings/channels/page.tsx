@@ -84,6 +84,7 @@ export default function ChannelsSettingsPage() {
   )
   const [modal, setModal] = useState<ChannelKey | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [testing, setTesting] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
   const [slackChannel, setSlackChannel] = useState('#general')
 
@@ -104,6 +105,38 @@ export default function ChannelsSettingsPage() {
       setSaving(null)
     }
   }, [mutate])
+
+  const testChannel = useCallback(async (channel: ChannelKey) => {
+    setTesting(channel)
+    try {
+      const result = await apiClient.post<{ to?: string; messageId?: string; sent?: boolean }>(
+        '/settings/channels/test',
+        { channel },
+      )
+      await mutate()
+      if (channel === 'whatsapp') {
+        toast.success(
+          result.to
+            ? `Test sent to +${result.to.replace(/^\+/, '')}. Check WhatsApp on that phone.`
+            : 'Test message sent. Check WhatsApp.',
+        )
+      } else {
+        toast.success('Test message sent')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Test send failed'
+      toast.error(message)
+    } finally {
+      setTesting(null)
+    }
+  }, [mutate])
+
+  const formatLastActivity = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return '—'
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return value
+    return d.toLocaleString()
+  }
 
   const ch = modal ? channelMap[modal] : null
 
@@ -150,15 +183,23 @@ export default function ChannelsSettingsPage() {
 
               {connected && cfg && (
                 <div className="text-xs text-slate-500 mb-3 space-y-1">
-                  <p>Account: {(cfg.config.accountName as string) ?? 'Configured'}</p>
-                  <p>Last activity: {(cfg.config.lastMessageAt as string) ?? '—'}</p>
+                  <p>Account: {(cfg.config.accountName as string) ?? (cfg.config.phone as string) ?? 'Configured'}</p>
+                  <p>Last activity: {formatLastActivity(cfg.config.lastMessageAt)}</p>
                 </div>
               )}
 
               <div className="mt-auto flex gap-2 pt-2">
                 {connected ? (
                   <>
-                    <Button variant="secondary" size="sm" onClick={() => toast.success('Test message queued')}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={testing === key}
+                      disabled={testing === key}
+                      onClick={() =>
+                        isApiChannel ? void testChannel(key) : toast.info('Coming soon')
+                      }
+                    >
                       <Send className="h-3.5 w-3.5 mr-1" /> Test
                     </Button>
                     <Button
@@ -189,22 +230,39 @@ export default function ChannelsSettingsPage() {
           <ModalHeader><ModalTitle>Connect WhatsApp</ModalTitle></ModalHeader>
           <ModalBody className="space-y-4">
             <ol className="list-decimal list-inside text-sm text-slate-600 space-y-2">
-              <li>Register your phone number in Meta Business Manager</li>
-              <li>Copy the webhook URL below into Meta&apos;s callback URL field</li>
-              <li>Set verify token to your <code className="text-xs">WHATSAPP_VERIFY_TOKEN</code></li>
+              <li>Create a WhatsApp Business app in Meta Developer Console</li>
+              <li>Set server env: <code className="text-xs">WHATSAPP_ACCESS_TOKEN</code>, <code className="text-xs">WHATSAPP_PHONE_NUMBER_ID</code>, <code className="text-xs">WHATSAPP_VERIFY_TOKEN</code></li>
+              <li>Paste the webhook URL below into Meta&apos;s callback URL and subscribe to <code className="text-xs">messages</code></li>
+              <li>Enter the customer phone that should receive Cortex messages (E.164, e.g. +9470…)</li>
             </ol>
-            <Input label="Business phone number" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 0100" />
+            <Input label="Recipient phone number" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+94705103367" />
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Webhook URL</p>
               <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border">
-                <code className="text-xs flex-1 truncate">{ch?.webhookUrl}</code>
-                {ch?.webhookUrl && <CopyButton text={ch.webhookUrl} />}
+                <code className="text-xs flex-1 truncate">{ch?.webhookUrl ?? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/whatsapp/webhook`}</code>
+                {(ch?.webhookUrl || typeof window !== 'undefined') && (
+                  <CopyButton
+                    text={ch?.webhookUrl ?? `${window.location.origin}/api/channels/whatsapp/webhook`}
+                  />
+                )}
               </div>
             </div>
           </ModalBody>
           <ModalFooter>
             <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
-            <Button loading={saving === 'whatsapp'} onClick={() => void connect('whatsapp', true, { phone, accountName: phone })}>
+            <Button
+              loading={saving === 'whatsapp'}
+              disabled={!phone.trim()}
+              onClick={() => {
+                const normalized = phone.trim()
+                void connect('whatsapp', true, {
+                  phone: normalized,
+                  to: normalized,
+                  accountName: normalized,
+                })
+                setModal(null)
+              }}
+            >
               Connect WhatsApp
             </Button>
           </ModalFooter>
