@@ -133,8 +133,57 @@ async function refreshAccessToken(): Promise<string | null> {
     if (!res.ok) return null
     const json = await res.json()
     const accessToken = json.data?.accessToken as string | undefined
+    const permissions = (json.data?.permissions as string[] | undefined) ?? []
+    const user = json.data?.user as
+      | { id: string; email: string; name: string; role: string; avatarUrl?: string | null }
+      | undefined
+    const tenant = json.data?.tenant as
+      | {
+          id: string
+          name: string
+          slug: string
+          plan: string
+          logoUrl?: string | null
+          primaryColor?: string | null
+          secondaryColor?: string | null
+        }
+      | undefined
+
     if (accessToken) {
-      useSessionStore.getState().setTokens(accessToken)
+      const state = useSessionStore.getState()
+      if (user && tenant) {
+        state.setSession({
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            avatarUrl: user.avatarUrl ?? undefined,
+          },
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            plan: tenant.plan,
+            logoUrl: tenant.logoUrl ?? undefined,
+            primaryColor: tenant.primaryColor ?? undefined,
+            secondaryColor: tenant.secondaryColor ?? undefined,
+          },
+          permissions,
+          accessToken,
+          refreshToken: state.refreshToken ?? undefined,
+        })
+      } else if (state.user && state.tenant) {
+        state.setSession({
+          user: state.user,
+          tenant: state.tenant,
+          permissions: permissions.length ? permissions : state.permissions,
+          accessToken,
+          refreshToken: state.refreshToken ?? undefined,
+        })
+      } else {
+        state.setTokens(accessToken)
+      }
       return accessToken
     }
   } catch {
@@ -143,11 +192,15 @@ async function refreshAccessToken(): Promise<string | null> {
   return null
 }
 
+/** Clear httpOnly refresh cookie before login — avoids middleware bounce loop. */
 function redirectToLogin() {
-  if (typeof window !== 'undefined') {
-    useSessionStore.getState().clearSession()
-    window.location.href = '/login'
-  }
+  if (typeof window === 'undefined') return
+  useSessionStore.getState().clearSession()
+  void fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    .catch(() => undefined)
+    .finally(() => {
+      window.location.href = '/login?expired=1'
+    })
 }
 
 function redirectToAdminLogin() {
@@ -238,6 +291,15 @@ async function request<T>(
     if (newToken) return request<T>(method, path, body, options, true, retry5xx)
     redirectToLogin()
     throw new ApiError('Session expired', 401, 'UNAUTHORIZED')
+  }
+
+  /* Suspended / removed accounts — clear session immediately */
+  if (res.status === 403 && !isPublic) {
+    const err = await parseErrorResponse(res)
+    if (err.code === 'ACCOUNT_SUSPENDED' || /suspended/i.test(err.message)) {
+      redirectToLogin()
+    }
+    throw err
   }
 
   /* 429 — wait Retry-After → retry once */
@@ -343,6 +405,52 @@ export const apiClient = {
 export async function swrFetcher<T>(key: string | [string, ...unknown[]]): Promise<T> {
   const path = Array.isArray(key) ? (key[0] as string) : key
   return apiClient.get<T>(path)
+}
+
+/**
+ * Auth headers for browser calls that still use raw `fetch` instead of apiClient.
+ * Production tenant APIs require Bearer + x-tenant-id (cookies alone are not enough).
+ */
+export function getAuthHeaders(extra?: HeadersInit): Headers {
+  const session = getSessionSnapshot()
+  const headers = new Headers(extra)
+  if (!headers.has('Authorization') && session.accessToken) {
+    headers.set('Authorization', `Bearer ${session.accessToken}`)
+  }
+  if (!headers.has('x-tenant-id') && session.tenant?.id) {
+    headers.set('x-tenant-id', session.tenant.id)
+  }
+  return headers
+}
+
+/**
+ * Drop-in authenticated fetch for dashboard mutations.
+ * Ensures a Bearer token (refreshing from cookie if needed) and retries once on 401.
+ */
+export async function authFetch(input: string, init?: RequestInit): Promise<Response> {
+  if (!getSessionSnapshot().accessToken) {
+    await refreshAccessToken()
+  }
+
+  const doFetch = () =>
+    fetch(input, {
+      ...init,
+      credentials: init?.credentials ?? 'include',
+      headers: getAuthHeaders(init?.headers),
+    })
+
+  let res = await doFetch()
+
+  if (res.status === 401) {
+    const renewed = await refreshAccessToken()
+    if (renewed) {
+      res = await doFetch()
+    } else {
+      redirectToLogin()
+    }
+  }
+
+  return res
 }
 
 /** Normalize list API responses — plain arrays or `{ data: T[] }` paginated envelopes */

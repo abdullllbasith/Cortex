@@ -75,6 +75,15 @@ interface DashboardData {
     revenue: number
     timestamp: string
   }>
+  visibility?: {
+    revenue: boolean
+    orders: boolean
+    pipeline: boolean
+    inventory: boolean
+    finance: boolean
+    agents: boolean
+    crm: boolean
+  }
 }
 
 interface BriefingData {
@@ -93,6 +102,7 @@ export function MasterDashboardClient() {
   const sessionReady = useSessionReady()
   const tenantId = useSessionStore((s) => s.tenant?.id)
   const accessToken = useSessionStore((s) => s.accessToken)
+  const hasPermission = useSessionStore((s) => s.hasPermission)
   const canFetchDashboard = Boolean(tenantId && accessToken)
   const {
     data,
@@ -138,6 +148,22 @@ export function MasterDashboardClient() {
   }
 
   const spark = data?.kpiSparklines
+  const visibility = data?.visibility ?? {
+    revenue: hasPermission('SALES_VIEW') || hasPermission('FINANCE_VIEW'),
+    orders: hasPermission('SALES_VIEW'),
+    pipeline: hasPermission('CRM_VIEW') || hasPermission('SALES_VIEW'),
+    inventory: hasPermission('INVENTORY_VIEW'),
+    finance: hasPermission('FINANCE_VIEW'),
+    agents: hasPermission('AGENTS_USE'),
+    crm: hasPermission('CRM_VIEW'),
+  }
+  const showAnyKpi =
+    visibility.revenue ||
+    visibility.orders ||
+    visibility.pipeline ||
+    visibility.inventory ||
+    visibility.finance ||
+    visibility.agents
 
   if (sessionReady && tenantId && !accessToken) {
     return (
@@ -175,6 +201,36 @@ export function MasterDashboardClient() {
 
   return (
     <PageContainer className="flex flex-col gap-5 py-5 lg:py-6">
+      {!showAnyKpi && !metricsLoading && (
+        <Card>
+          <CardBody className="p-8 text-center">
+            <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Welcome to your workspace
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
+              Your role does not include operational dashboards yet. Open Settings to update your
+              profile, or ask an admin to grant module access in Roles &amp; Permissions.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <Button size="sm" variant="primary" onClick={() => router.push('/settings/profile')}>
+                Open profile
+              </Button>
+              {hasPermission('KNOWLEDGE_READ') && (
+                <Button size="sm" variant="secondary" onClick={() => router.push('/knowledge')}>
+                  Knowledge Base
+                </Button>
+              )}
+              {hasPermission('AGENTS_USE') && (
+                <Button size="sm" variant="secondary" onClick={() => router.push('/assistant')}>
+                  AI Assistant
+                </Button>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {visibility.agents && (
       <div className="flex justify-end">
         <Button
           size="sm"
@@ -185,61 +241,77 @@ export function MasterDashboardClient() {
           AI briefing
         </Button>
       </div>
+      )}
 
-      {/* KPIs */}
+      {/* KPIs — only modules the role can access */}
+      {showAnyKpi && (
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard
-          label="Revenue today"
-          value={data?.kpis.revenueToday ?? 0}
-          prefix="$"
-          sparkline={spark?.revenueToday}
-          loading={metricsLoading}
-          animationDelay={0}
-        />
-        <MetricCard
-          label="Active orders"
-          value={data?.kpis.activeOrders ?? 0}
-          sparkline={spark?.activeOrders}
-          loading={metricsLoading}
-          animationDelay={50}
-        />
-        <MetricCard
-          label="Pipeline value"
-          value={data?.kpis.pipelineValue ?? 0}
-          prefix="$"
-          sparkline={spark?.pipelineValue}
-          loading={metricsLoading}
-          animationDelay={100}
-        />
-        <MetricCard
-          label="Low stock items"
-          value={data?.kpis.lowStockItems ?? 0}
-          urgent={(data?.kpis.lowStockItems ?? 0) > 0}
-          positiveIsGood={false}
-          sparkline={spark?.lowStockItems}
-          loading={metricsLoading}
-          animationDelay={150}
-        />
-        <MetricCard
-          label="AR outstanding"
-          value={data?.kpis.arOutstanding ?? 0}
-          prefix="$"
-          positiveIsGood={false}
-          sparkline={spark?.arOutstanding}
-          loading={metricsLoading}
-          animationDelay={200}
-        />
-        <MetricCard
-          label="AI calls today"
-          numerator={data?.kpis.aiCallsToday}
-          denominator={data?.kpis.aiCallsLimit}
-          sparkline={spark?.aiCallsToday}
-          loading={metricsLoading}
-          animationDelay={250}
-        />
+        {visibility.revenue && (
+          <MetricCard
+            label="Revenue today"
+            value={data?.kpis.revenueToday ?? 0}
+            prefix="$"
+            sparkline={spark?.revenueToday}
+            loading={metricsLoading}
+            animationDelay={0}
+          />
+        )}
+        {visibility.orders && (
+          <MetricCard
+            label="Active orders"
+            value={data?.kpis.activeOrders ?? 0}
+            sparkline={spark?.activeOrders}
+            loading={metricsLoading}
+            animationDelay={50}
+          />
+        )}
+        {visibility.pipeline && (
+          <MetricCard
+            label="Pipeline value"
+            value={data?.kpis.pipelineValue ?? 0}
+            prefix="$"
+            sparkline={spark?.pipelineValue}
+            loading={metricsLoading}
+            animationDelay={100}
+          />
+        )}
+        {visibility.inventory && (
+          <MetricCard
+            label="Low stock items"
+            value={data?.kpis.lowStockItems ?? 0}
+            urgent={(data?.kpis.lowStockItems ?? 0) > 0}
+            positiveIsGood={false}
+            sparkline={spark?.lowStockItems}
+            loading={metricsLoading}
+            animationDelay={150}
+          />
+        )}
+        {visibility.finance && (
+          <MetricCard
+            label="AR outstanding"
+            value={data?.kpis.arOutstanding ?? 0}
+            prefix="$"
+            positiveIsGood={false}
+            sparkline={spark?.arOutstanding}
+            loading={metricsLoading}
+            animationDelay={200}
+          />
+        )}
+        {visibility.agents && (
+          <MetricCard
+            label="AI calls today"
+            numerator={data?.kpis.aiCallsToday}
+            denominator={data?.kpis.aiCallsLimit}
+            sparkline={spark?.aiCallsToday}
+            loading={metricsLoading}
+            animationDelay={250}
+          />
+        )}
       </div>
+      )}
 
       {/* AI daily briefing — auto-loads after dashboard KPIs are ready */}
+      {visibility.agents && (
       <Card className="overflow-hidden border-indigo-200/90 bg-gradient-to-br from-indigo-50 via-violet-50/80 to-white shadow-sm dark:border-indigo-800/60 dark:from-indigo-950/50 dark:via-violet-950/30 dark:to-slate-900">
         <CardBody className="p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -320,16 +392,21 @@ export function MasterDashboardClient() {
           )}
         </CardBody>
       </Card>
+      )}
 
       {/* Row 4 — Charts (lazy-loaded Recharts bundle) */}
+      {(visibility.revenue || visibility.pipeline) && (
       <LazyMasterDashboardCharts
         isLoading={metricsLoading}
-        revenueChart14d={data?.revenueChart14d ?? []}
-        pipelineByStage={data?.pipelineByStage ?? []}
+        revenueChart14d={visibility.revenue ? (data?.revenueChart14d ?? []) : []}
+        pipelineByStage={visibility.pipeline ? (data?.pipelineByStage ?? []) : []}
       />
+      )}
 
       {/* Row 5 — Action columns */}
+      {(visibility.finance || visibility.inventory || visibility.crm) && (
       <div className="grid gap-5 lg:grid-cols-3">
+        {visibility.finance && (
         <Card>
           <CardBody className="p-5">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -367,7 +444,9 @@ export function MasterDashboardClient() {
             )}
           </CardBody>
         </Card>
+        )}
 
+        {visibility.inventory && (
         <Card>
           <CardBody className="p-5">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -398,7 +477,9 @@ export function MasterDashboardClient() {
             )}
           </CardBody>
         </Card>
+        )}
 
+        {visibility.crm && (
         <Card>
           <CardBody className="p-5">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -433,9 +514,12 @@ export function MasterDashboardClient() {
             )}
           </CardBody>
         </Card>
+        )}
       </div>
+      )}
 
       {/* Row 6 — Recent transactions */}
+      {visibility.orders && (
       <Card>
         <CardBody className="p-0">
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -479,6 +563,7 @@ export function MasterDashboardClient() {
           )}
         </CardBody>
       </Card>
+      )}
     </PageContainer>
   )
 }

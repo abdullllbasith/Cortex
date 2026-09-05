@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader, Button, Card, CardBody, Input, toast } from '@/components/ui'
+import { apiClient } from '@/lib/api/apiClient'
 import Link from 'next/link'
 import { BarcodeField } from '@/components/inventory/BarcodeField'
 
@@ -18,8 +19,8 @@ export function ProductNewClient() {
     barcode: '',
     costPrice: 0,
     sellingPrice: 0,
-    reorderPoint: 0,
-    reorderQuantity: 0,
+    reorderPoint: 10,
+    reorderQuantity: 25,
     description: '',
   })
 
@@ -30,19 +31,11 @@ export function ProductNewClient() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(form),
-      })
-      const json = await res.json()
-      if (!json.success) {
-        toast.error(json.error?.message ?? 'Failed to create product')
-        return
-      }
+      const product = await apiClient.post<{ id: string }>('/inventory/products', form)
       toast.success('Product created')
-      router.push(`/inventory/products/${json.data.id}`)
+      router.push(`/inventory/products/${product.id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create product')
     } finally {
       setSubmitting(false)
     }

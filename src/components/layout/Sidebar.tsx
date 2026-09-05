@@ -9,6 +9,7 @@ import { useSidebar } from '@/lib/sidebar-context'
 import { useIsTablet, useIsDesktop } from '@/hooks/useIsMobile'
 import {
   navSections,
+  filterNavSections,
   isNavItemActive,
   type NavItem,
   type NavSection,
@@ -29,6 +30,9 @@ export function Sidebar({ className }: { className?: string }) {
   const isDesktop = useIsDesktop()
   const effectiveCollapsed = isTablet || collapsed
   const reorderCount = useReorderSuggestionCount()
+  const hasPermission = useSessionStore((s) => s.hasPermission)
+  const permissions = useSessionStore((s) => s.permissions)
+  const visibleSections = filterNavSections(navSections, hasPermission)
 
   return (
     <aside
@@ -42,8 +46,13 @@ export function Sidebar({ className }: { className?: string }) {
       <SidebarLogo collapsed={effectiveCollapsed} />
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-area scroll-area-dark">
-        {navSections.map((section) => (
-          <SidebarSection key={section.label} section={section} collapsed={effectiveCollapsed} reorderCount={reorderCount} />
+        {visibleSections.map((section) => (
+          <SidebarSection
+            key={`${section.label}-${permissions.join(',')}`}
+            section={section}
+            collapsed={effectiveCollapsed}
+            reorderCount={reorderCount}
+          />
         ))}
       </nav>
 

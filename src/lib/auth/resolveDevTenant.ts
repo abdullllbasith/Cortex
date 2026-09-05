@@ -174,19 +174,25 @@ export async function resolveTenantUserId(candidateId: string, tenantId: string)
   }
 
   const byId = await prisma.user.findFirst({
-    where: { id: candidateId, tenantId, isActive: true },
-    select: { id: true },
+    where: { id: candidateId, tenantId },
+    select: { id: true, isActive: true },
   })
-  if (byId) return byId.id
+  if (byId) {
+    if (!byId.isActive) {
+      throw new TenantAuthError('This account has been suspended', 403, 'ACCOUNT_SUSPENDED')
+    }
+    return byId.id
+  }
 
   const bySupabase = await prisma.user.findFirst({
-    where: { supabaseId: candidateId, tenantId, isActive: true },
-    select: { id: true },
+    where: { supabaseId: candidateId, tenantId },
+    select: { id: true, isActive: true },
   })
-  if (bySupabase) return bySupabase.id
-
-  if (process.env.AUTH_DEV_MODE === 'true') {
-    return resolveDevUserId(tenantId)
+  if (bySupabase) {
+    if (!bySupabase.isActive) {
+      throw new TenantAuthError('This account has been suspended', 403, 'ACCOUNT_SUSPENDED')
+    }
+    return bySupabase.id
   }
 
   throw new TenantAuthError(

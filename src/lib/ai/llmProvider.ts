@@ -3,13 +3,13 @@ import OpenAI from 'openai'
 /**
  * Shared OpenAI-compatible LLM client via OpenRouter.
  * Multi-model chain: LLM_CHAT_MODELS / LLM_PREDICTION_MODELS (comma-separated).
- * Default: Nemotron 3 Ultra → GPT-OSS 20B (free).
+ * Default: GPT-4o mini → Gemini 2.5 Flash Lite (cheap, efficient paid models).
  */
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 const DEFAULT_MODEL_CHAIN = [
-  'nvidia/nemotron-3-ultra-550b-a55b',
-  'openai/gpt-oss-20b:free',
+  'openai/gpt-4o-mini',
+  'google/gemini-2.5-flash-lite',
 ] as const
 
 let chatClient: OpenAI | null = null

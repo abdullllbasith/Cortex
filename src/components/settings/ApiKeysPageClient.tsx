@@ -18,7 +18,7 @@ import {
   ModalFooter,
   ModalTitle,
 } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { ALL_PERMISSIONS } from '@/lib/auth/permissions'
 
 interface ApiKeyRow {
@@ -49,7 +49,7 @@ export function ApiKeysPageClient() {
   async function createKey() {
     setLoading(true)
     try {
-      const res = await fetch('/api/settings/api-keys', {
+      const res = await authFetch('/api/settings/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -74,7 +74,7 @@ export function ApiKeysPageClient() {
 
   async function revoke(id: string) {
     if (!confirm('Revoke this API key?')) return
-    await fetch(`/api/settings/api-keys?id=${id}`, { method: 'DELETE', credentials: 'include' })
+    await authFetch(`/api/settings/api-keys?id=${id}`, { method: 'DELETE', credentials: 'include' })
     mutate()
   }
 

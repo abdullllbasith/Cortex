@@ -2,46 +2,87 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button, Card, CardBody, Input } from '@/components/ui'
-import { useSessionStore } from '@/store/sessionStore'
+import { authFetch } from '@/lib/api/apiClient'
+import { useSessionStore, onSessionHydrated } from '@/store/sessionStore'
 
 export function MfaSetupClient() {
   const router = useRouter()
   const accessToken = useSessionStore((s) => s.accessToken)
+  const [hydrated, setHydrated] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [setupToken, setSetupToken] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [initLoading, setInitLoading] = useState(true)
 
   useEffect(() => {
-    if (!accessToken) return
-    fetch('/api/auth/mfa/enable', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((r) => r.json())
-      .then((json) => {
+    return onSessionHydrated(() => setHydrated(true))
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+
+    if (!accessToken) {
+      setInitLoading(false)
+      setError('You must be signed in to set up MFA.')
+      return
+    }
+
+    let cancelled = false
+    setInitLoading(true)
+    setError(null)
+
+    void (async () => {
+      try {
+        const statusRes = await authFetch('/api/auth/mfa/status')
+        const statusJson = await statusRes.json()
+        if (cancelled) return
+
+        if (statusRes.ok && statusJson.success && statusJson.data?.mfaEnabled) {
+          router.replace('/settings/security')
+          return
+        }
+
+        const res = await authFetch('/api/auth/mfa/enable', { method: 'POST' })
+        const json = await res.json()
+        if (cancelled) return
+
         if (json.success) {
           setQrCode(json.data.qrCodeDataUrl)
           setSetupToken(json.data.setupToken)
+          return
         }
-      })
-      .catch(() => setError('Failed to initialize MFA'))
-  }, [accessToken])
+
+        const message = json.error?.message ?? 'Failed to initialize MFA'
+        if (/already enabled/i.test(message)) {
+          router.replace('/settings/security')
+          return
+        }
+        setError(message)
+      } catch {
+        if (!cancelled) setError('Failed to initialize MFA. Check your connection and try again.')
+      } finally {
+        if (!cancelled) setInitLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hydrated, accessToken, router])
 
   async function enable() {
     if (!accessToken || !setupToken) return
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/auth/mfa/verify', {
+      const res = await authFetch('/api/auth/mfa/verify', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, setupToken }),
       })
       const json = await res.json()
@@ -94,7 +135,11 @@ export function MfaSetupClient() {
         {qrCode ? (
           <div className="flex flex-col items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrCode} alt="TOTP QR code" className="h-48 w-48 rounded-lg border border-slate-200 dark:border-slate-700" />
+            <img
+              src={qrCode}
+              alt="TOTP QR code"
+              className="h-48 w-48 rounded-lg border border-slate-200 dark:border-slate-700"
+            />
             <Input
               label="Verification code"
               inputMode="numeric"
@@ -109,8 +154,26 @@ export function MfaSetupClient() {
             </Button>
           </div>
         ) : (
-          <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-            <span className="text-sm text-slate-400">Generating QR code…</span>
+          <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-200 px-4 text-center dark:border-slate-700">
+            {initLoading ? (
+              <span className="text-sm text-slate-400">Generating QR code…</span>
+            ) : (
+              <>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {error ?? 'Could not start MFA setup.'}
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => router.refresh()}>
+                    Try again
+                  </Button>
+                  <Link href="/settings/security">
+                    <Button size="sm" variant="secondary">
+                      Back to Security
+                    </Button>
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         )}
       </CardBody>

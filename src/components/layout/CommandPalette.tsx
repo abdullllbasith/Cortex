@@ -4,14 +4,12 @@ import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Command } from 'cmdk'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import {
-  LayoutDashboard, Bot, BookOpen, Cpu, BarChart3, TrendingUp,
-  GitBranch, Settings, Bell, CreditCard, Search, ArrowRight,
-  Zap, FileText, Users, BarChart2, Package, RefreshCw, Users2,
-  ShoppingCart, DollarSign, UserSquare2, AlertTriangle,
-} from 'lucide-react'
+import { Search, ArrowRight, Zap, FileText, Users, BarChart2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SaiosLogo } from '@/components/branding/SaiosLogo'
+import { allNavItems } from './nav-config'
+import { useSessionStore } from '@/store/sessionStore'
+import { PERMISSIONS } from '@/lib/auth/permissions'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    CommandPalette — ⌘K global search
@@ -23,44 +21,28 @@ interface CommandPaletteProps {
   fullScreen?: boolean
 }
 
-/* Navigation shortcuts */
-const navItems = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Inventory', href: '/inventory', icon: Package },
-  { label: 'Reorder', href: '/inventory/reorder', icon: RefreshCw },
-  { label: 'CRM', href: '/crm', icon: Users2 },
-  { label: 'Sales', href: '/sales/quotes', icon: ShoppingCart },
-  { label: 'Finance', href: '/finance', icon: DollarSign },
-  { label: 'AI Executive Assistant', href: '/assistant', icon: Bot },
-  { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
-  { label: 'Agents', href: '/agents', icon: Cpu },
-  { label: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { label: 'Predictions', href: '/predictions', icon: TrendingUp },
-  { label: 'Workflows', href: '/workflows', icon: GitBranch },
-  { label: 'HR', href: '/hr', icon: UserSquare2 },
-  { label: 'Notifications', href: '/notifications', icon: Bell },
-  { label: 'Alerts', href: '/alerts', icon: AlertTriangle },
-  { label: 'Billing', href: '/settings/billing', icon: CreditCard },
-  { label: 'Settings', href: '/settings', icon: Settings },
-] as const
-
-/* Quick action shortcuts */
 const actionItems = [
-  { label: 'New workflow',   icon: Zap,      action: 'new-workflow' },
-  { label: 'Upload document',icon: FileText, action: 'upload-doc' },
-  { label: 'Invite teammate',icon: Users,    action: 'invite' },
-  { label: 'View reports',   icon: BarChart2,action: 'reports' },
+  { label: 'New workflow', icon: Zap, action: 'new-workflow', permission: PERMISSIONS.WORKFLOWS_CREATE },
+  { label: 'Upload document', icon: FileText, action: 'upload-doc', permission: PERMISSIONS.KNOWLEDGE_WRITE },
+  { label: 'Invite teammate', icon: Users, action: 'invite', permission: PERMISSIONS.TEAM_MANAGE },
+  { label: 'View reports', icon: BarChart2, action: 'reports', permission: PERMISSIONS.ANALYTICS_VIEW },
 ] as const
 
-/* Recent (would be fetched from API / localStorage in production) */
 const recentItems = [
-  { label: 'Customer #4421 — Acme Inc',  href: '/knowledge/customers/4421' },
+  { label: 'Customer #4421 — Acme Inc', href: '/knowledge/customers/4421' },
   { label: 'Invoice workflow — Oct 2025', href: '/workflows/invoice-oct' },
-  { label: 'Sales analytics report',     href: '/analytics/sales' },
+  { label: 'Sales analytics report', href: '/analytics/sales' },
 ]
 
 export function CommandPalette({ open, onOpenChange, fullScreen = false }: CommandPaletteProps) {
   const router = useRouter()
+  const hasPermission = useSessionStore((s) => s.hasPermission)
+  const navItems = allNavItems.filter(
+    (item) => !item.permission || hasPermission(item.permission),
+  )
+  const visibleActions = actionItems.filter(
+    (item) => !item.permission || hasPermission(item.permission),
+  )
 
   const navigate = useCallback(
     (href: string) => {
@@ -73,10 +55,8 @@ export function CommandPalette({ open, onOpenChange, fullScreen = false }: Comma
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        {/* Overlay */}
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-fadeIn data-[state=closed]:animate-fadeOut" />
 
-        {/* Panel */}
         <DialogPrimitive.Content
           aria-label="Command palette"
           className={cn(
@@ -117,7 +97,6 @@ export function CommandPalette({ open, onOpenChange, fullScreen = false }: Comma
                 No results found.
               </Command.Empty>
 
-              {/* Navigation group */}
               <Command.Group
                 heading="Navigation"
                 className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
@@ -146,7 +125,6 @@ export function CommandPalette({ open, onOpenChange, fullScreen = false }: Comma
 
               <Command.Separator className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
 
-              {/* Recent group */}
               <Command.Group
                 heading="Recent"
                 className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
@@ -174,12 +152,11 @@ export function CommandPalette({ open, onOpenChange, fullScreen = false }: Comma
 
               <Command.Separator className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
 
-              {/* Actions group */}
               <Command.Group
                 heading="Actions"
                 className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
               >
-                {actionItems.map(({ label, icon: Icon, action }) => (
+                {visibleActions.map(({ label, icon: Icon, action }) => (
                   <Command.Item
                     key={action}
                     value={`action-${label}`}
@@ -201,7 +178,6 @@ export function CommandPalette({ open, onOpenChange, fullScreen = false }: Comma
               </Command.Group>
             </Command.List>
 
-            {/* Footer hint */}
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 dark:border-slate-800">
               <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-slate-600">
                 <span className="flex items-center gap-1">

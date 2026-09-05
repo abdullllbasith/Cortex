@@ -8,6 +8,7 @@ import {
   isAdminLoginRoute,
 } from '@/middleware/adminAuthEdge'
 import { MFA_PENDING_COOKIE } from '@/lib/auth/sessionCookies'
+import { REFRESH_COOKIE } from '@/lib/auth/jwt'
 
 const PUBLIC_PATHS = [
   '/',
@@ -175,10 +176,39 @@ export async function middleware(request: NextRequest) {
   const { user, response: supabaseResponse } = await getSupabaseUser(request, response)
   response = supabaseResponse
 
+  // App sessions use opaque refresh cookies (invite accept / password login).
+  // Supabase SSR cookies are optional — do not require both.
+  const hasAppSession = Boolean(request.cookies.get(REFRESH_COOKIE)?.value)
+  const isAuthenticated = Boolean(user) || hasAppSession
+
   // Landing: redirect authenticated users to dashboard
-  if (pathname === '/' && user) {
+  if (pathname === '/' && isAuthenticated) {
     const dash = request.nextUrl.clone()
     dash.pathname = '/dashboard'
+    return NextResponse.redirect(dash)
+  }
+
+  // Expired client session — clear stale refresh cookie and show login
+  if (pathname === '/login' && request.nextUrl.searchParams.get('expired') === '1') {
+    const loginRes = NextResponse.next({ request })
+    applySecurityHeaders(loginRes, request)
+    loginRes.cookies.delete(REFRESH_COOKIE)
+    loginRes.cookies.delete(MFA_PENDING_COOKIE)
+    return loginRes
+  }
+
+  // Already signed in — leave auth pages for the app
+  if (
+    isAuthenticated &&
+    (pathname === '/login' || pathname === '/register' || pathname.startsWith('/invite'))
+  ) {
+    const dash = request.nextUrl.clone()
+    const redirect = request.nextUrl.searchParams.get('redirect')
+    dash.pathname =
+      redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+        ? redirect
+        : '/dashboard'
+    dash.search = ''
     return NextResponse.redirect(dash)
   }
 
@@ -187,7 +217,7 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
     loginUrl.searchParams.set('redirect', pathname)

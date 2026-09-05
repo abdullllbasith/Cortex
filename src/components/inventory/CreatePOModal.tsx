@@ -16,7 +16,7 @@ import {
   ModalFooter,
   ModalTitle,
 } from '@/components/ui/Modal'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 interface LineDraft {
   productId: string
@@ -92,7 +92,7 @@ export function CreatePOModal({
 
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/purchase-orders', {
+      const res = await authFetch('/api/inventory/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

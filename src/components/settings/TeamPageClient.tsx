@@ -29,7 +29,7 @@ import {
   ModalTitle,
 } from '@/components/ui/Modal'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { InviteModal } from '@/components/settings/InviteModal'
 import {
   ROLE_LABELS,
@@ -61,7 +61,7 @@ export function TeamPageClient() {
 
   const changeRole = useCallback(
     async (userId: string, role: UserRole) => {
-      const res = await fetch(`/api/settings/team/${userId}/role`, {
+      const res = await authFetch(`/api/settings/team/${userId}/role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -80,7 +80,7 @@ export function TeamPageClient() {
 
   const toggleStatus = useCallback(
     async (member: TeamMemberDTO) => {
-      const res = await fetch(`/api/settings/team/${member.id}/status`, {
+      const res = await authFetch(`/api/settings/team/${member.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -92,14 +92,14 @@ export function TeamPageClient() {
         return
       }
       toast.success(member.isActive ? 'Member suspended' : 'Member reactivated')
-      mutate()
+      await mutate()
     },
     [mutate],
   )
 
   const removeMember = useCallback(async () => {
     if (!removeTarget) return
-    const res = await fetch(`/api/settings/team/${removeTarget.id}`, {
+    const res = await authFetch(`/api/settings/team/${removeTarget.id}`, {
       method: 'DELETE',
       credentials: 'include',
     })
@@ -110,12 +110,12 @@ export function TeamPageClient() {
     }
     toast.success('Member removed')
     setRemoveTarget(null)
-    mutate()
+    await mutate()
   }, [removeTarget, mutate])
 
   const resendInvite = useCallback(
     async (invitationId: string) => {
-      const res = await fetch('/api/tenants/invitations', {
+      const res = await authFetch('/api/tenants/invitations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -134,7 +134,7 @@ export function TeamPageClient() {
 
   const revokeInvite = useCallback(
     async (invitationId: string) => {
-      const res = await fetch(`/api/tenants/invitations?id=${invitationId}`, {
+      const res = await authFetch(`/api/tenants/invitations?id=${invitationId}`, {
         method: 'DELETE',
         credentials: 'include',
       })
@@ -159,7 +159,7 @@ export function TeamPageClient() {
 
   const bulkRemove = useCallback(async () => {
     for (const m of selected) {
-      const res = await fetch(`/api/settings/team/${m.id}`, {
+      const res = await authFetch(`/api/settings/team/${m.id}`, {
         method: 'DELETE',
         credentials: 'include',
       })

@@ -279,12 +279,20 @@ export async function indexEntityBatch(
         try {
           await storeEmbedding(entityType, batch[j].id, embeddings[j], batch[j].contentHash)
           indexed++
-        } catch {
+        } catch (storeErr) {
+          console.error(
+            `[knowledgeIndexer] storeEmbedding failed for ${entityType}/${batch[j].id}:`,
+            storeErr,
+          )
           await markEmbeddingError(entityType, batch[j].id)
           errors++
         }
       }
-    } catch {
+    } catch (batchErr) {
+      console.error(
+        `[knowledgeIndexer] generateEmbeddingsBatch failed for ${entityType} (batch=${batch.length}):`,
+        batchErr,
+      )
       for (const record of batch) {
         await markEmbeddingError(entityType, record.id)
         errors++

@@ -98,6 +98,11 @@ export async function revokeSession(refreshToken: string): Promise<void> {
   await prisma.userSession.deleteMany({ where: { sessionToken: hash } })
 }
 
+/** Invalidate every refresh session for a user (suspend / remove). */
+export async function revokeAllSessionsForUser(userId: string): Promise<void> {
+  await prisma.userSession.deleteMany({ where: { userId } })
+}
+
 export async function validateRefreshToken(refreshToken: string) {
   const hash = hashToken(refreshToken)
   const session = await prisma.userSession.findFirst({

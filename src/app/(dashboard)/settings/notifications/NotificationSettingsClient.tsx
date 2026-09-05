@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Bell, Hash, Mail, MessageCircle, Send } from 'lucide-react'
 import { PageHeader, Button, Toggle, Skeleton } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { queryKeys } from '@/lib/api/queryKeys'
 import type { NotificationPreferenceDTO } from '@/lib/notifications/types'
 import { NOTIFICATION_TEMPLATES } from '@/lib/notifications/notificationTemplates'
@@ -58,7 +58,7 @@ export default function NotificationSettingsClient() {
   async function save() {
     setSaving(true)
     try {
-      await fetch('/api/notifications/preferences', {
+      await authFetch('/api/notifications/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -74,7 +74,7 @@ export default function NotificationSettingsClient() {
   async function sendTest() {
     setTesting(true)
     try {
-      await fetch('/api/notifications/preferences', {
+      await authFetch('/api/notifications/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

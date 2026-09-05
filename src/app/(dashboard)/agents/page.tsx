@@ -1,14 +1,14 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PageHeader } from '@/components/ui'
+import { PageHeader, toast } from '@/components/ui'
 import { ResponsiveContainer } from '@/components/layout/ResponsiveContainer'
 import { AgentCard, AgentThoughtStream, TaskQueue } from '@/components/agents'
 import { QueryProvider } from '@/providers/QueryProvider'
 import { getSessionSnapshot } from '@/store/sessionStore'
+import { authFetch } from '@/lib/api/apiClient'
 import type { AgentStatusInfo, AgentTaskStep, AgentTypeKey } from '@/lib/agents/core/types'
-import { toast } from '@/components/ui'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 interface ApiResponse<T> {
   success: boolean
@@ -84,6 +84,7 @@ function AgentsControlCenter() {
   const queryClient = useQueryClient()
   const [recentSteps, setRecentSteps] = useState<AgentTaskStep[]>([])
   const [invoking, setInvoking] = useState<AgentTypeKey | null>(null)
+  const [clearingQueue, setClearingQueue] = useState(false)
 
   const { data: status } = useQuery({
     queryKey: ['agents-status'],
@@ -96,6 +97,46 @@ function AgentsControlCenter() {
     queryFn: () => fetchWithAuth<QueueTask[]>('/agents/tasks'),
     refetchInterval: 2000,
   })
+
+  const refreshQueue = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['agents-tasks'] })
+    void queryClient.invalidateQueries({ queryKey: ['agents-status'] })
+  }, [queryClient])
+
+  const clearTasks = useCallback(
+    async (body: { mode: 'one'; taskId: string } | { mode: 'completed'; includeFailed?: boolean }) => {
+      setClearingQueue(true)
+      try {
+        const res = await authFetch('/api/agents/tasks', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const json = (await res.json()) as {
+          success?: boolean
+          error?: { message?: string }
+          data?: { deleted?: number }
+        }
+        if (!res.ok || json.success === false) {
+          throw new Error(json.error?.message || 'Failed to clear tasks')
+        }
+        const deleted = json.data?.deleted ?? 0
+        toast.success(
+          body.mode === 'one'
+            ? 'Task removed'
+            : deleted > 0
+              ? `Cleared ${deleted} finished task${deleted === 1 ? '' : 's'}`
+              : 'No finished tasks to clear',
+        )
+        refreshQueue()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to clear tasks')
+      } finally {
+        setClearingQueue(false)
+      }
+    },
+    [refreshQueue],
+  )
 
   const invokeAgent = async (agentType: AgentTypeKey, task: string) => {
     setInvoking(agentType)
@@ -116,6 +157,10 @@ function AgentsControlCenter() {
               agentType,
               agentId: `${agentType}-agent`,
               content: answer,
+              data:
+                result.data.result && typeof result.data.result === 'object'
+                  ? (result.data.result as Record<string, unknown>)
+                  : undefined,
               timestamp: new Date().toISOString(),
             },
           ])
@@ -179,12 +224,17 @@ function AgentsControlCenter() {
 
         <section>
           <h2 className="page-section-title mb-3">Task Queue</h2>
-          <TaskQueue tasks={tasks} />
+          <TaskQueue
+            tasks={tasks}
+            clearing={clearingQueue}
+            onClearTask={(taskId) => clearTasks({ mode: 'one', taskId })}
+            onClearCompleted={() => clearTasks({ mode: 'completed', includeFailed: true })}
+          />
         </section>
 
         <section>
           <h2 className="page-section-title mb-3">Live Thought Stream</h2>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 max-h-96 overflow-y-auto">
+          <div className="max-h-[36rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <AgentThoughtStream steps={recentSteps} />
           </div>
         </section>

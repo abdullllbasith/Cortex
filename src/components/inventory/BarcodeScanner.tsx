@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, ScanLine } from 'lucide-react'
 import { Button, toast } from '@/components/ui'
+import { authFetch } from '@/lib/api/apiClient'
 
 export interface BarcodeScanResult {
   productId: string
@@ -30,7 +31,7 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
       scanningRef.current = true
       setLastCode(code)
       try {
-        const res = await fetch(`/api/inventory/products/barcode/${encodeURIComponent(code)}`, {
+        const res = await authFetch(`/api/inventory/products/barcode/${encodeURIComponent(code)}`, {
           credentials: 'include',
         })
         const json = await res.json()

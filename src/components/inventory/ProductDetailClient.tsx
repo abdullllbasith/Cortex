@@ -23,7 +23,7 @@ import {
   toast,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { ProductVariantsTab } from '@/components/inventory/ProductVariantsTab'
 import { BarcodeField } from '@/components/inventory/BarcodeField'
 import { StockBadge, type StockHealth } from '@/components/inventory/StockBadge'
@@ -141,7 +141,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     if (!p) return
     setSaving(true)
     try {
-      const res = await fetch(`/api/inventory/products/${productId}`, {
+      const res = await authFetch(`/api/inventory/products/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

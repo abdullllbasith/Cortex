@@ -22,7 +22,7 @@ import {
   toast,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 type UrgencyFilter = 'critical' | 'warning' | 'all'
 
@@ -94,7 +94,7 @@ export function ReorderPageClient() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const res = await fetch('/api/inventory/reorder', {
+      const res = await authFetch('/api/inventory/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'refresh', urgency }),
@@ -118,7 +118,7 @@ export function ReorderPageClient() {
       }
       setBusySupplier(supplierId)
       try {
-        const res = await fetch('/api/inventory/reorder', {
+        const res = await authFetch('/api/inventory/reorder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'create_po', supplierId }),
@@ -140,7 +140,7 @@ export function ReorderPageClient() {
   const handleCreateAll = useCallback(async () => {
     setCreatingAll(true)
     try {
-      const res = await fetch('/api/inventory/reorder', {
+      const res = await authFetch('/api/inventory/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create_all', urgency }),
@@ -160,7 +160,7 @@ export function ReorderPageClient() {
   const handleDismissGroup = useCallback(
     async (productIds: string[]) => {
       try {
-        const res = await fetch('/api/inventory/reorder', {
+        const res = await authFetch('/api/inventory/reorder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'dismiss_group', productIds, days: 7 }),

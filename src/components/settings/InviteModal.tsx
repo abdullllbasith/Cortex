@@ -24,6 +24,7 @@ import {
   buildInviteEmailPreview,
 } from '@/lib/settings/roleDefinitions'
 import { cn } from '@/lib/utils'
+import { authFetch } from '@/lib/api/apiClient'
 
 const MAX_EMAILS = 10
 
@@ -123,7 +124,7 @@ export function InviteModal({
     }
     setLoading(true)
     try {
-      const res = await fetch('/api/tenants/invitations', {
+      const res = await authFetch('/api/tenants/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

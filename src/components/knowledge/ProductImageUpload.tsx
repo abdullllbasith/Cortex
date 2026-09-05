@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { ImagePlus, Loader2, X } from 'lucide-react'
 import { Button, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { authFetch } from '@/lib/api/apiClient'
 
 interface ProductImageUploadProps {
   productId: string
@@ -39,7 +40,7 @@ export function ProductImageUpload({
           form.append('bucket', process.env.NEXT_PUBLIC_SUPABASE_UPLOAD_BUCKET ?? 'uploads')
           form.append('path', `products/${productId}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`)
 
-          const res = await fetch('/api/storage/upload', {
+          const res = await authFetch('/api/storage/upload', {
             method: 'POST',
             body: form,
             credentials: 'include',

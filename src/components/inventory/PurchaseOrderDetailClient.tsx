@@ -21,7 +21,7 @@ import {
   Input,
   toast,
 } from '@/components/ui'
-import { swrFetcher, apiClient } from '@/lib/api/apiClient'
+import { swrFetcher, apiClient, authFetch } from '@/lib/api/apiClient'
 import { BarcodeScanner, type BarcodeScanResult } from '@/components/inventory/BarcodeScanner'
 
 type POStatus =
@@ -142,7 +142,7 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
   }, [po?.items, initReceiveDraft])
 
   const action = async (path: string, successMessage: string) => {
-    const res = await fetch(path, { method: 'POST', credentials: 'include' })
+    const res = await authFetch(path, { method: 'POST', credentials: 'include' })
     const json = await res.json()
     if (!json.success) {
       toast.error(json.error?.message ?? 'Action failed')
@@ -183,7 +183,7 @@ export function PurchaseOrderDetailClient({ poId }: { poId: string }) {
 
     setReceiving(true)
     try {
-      const res = await fetch(`/api/inventory/purchase-orders/${poId}/receive`, {
+      const res = await authFetch(`/api/inventory/purchase-orders/${poId}/receive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

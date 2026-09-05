@@ -26,7 +26,7 @@ import {
   toast,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 type Tab = 'profile' | 'products' | 'orders' | 'performance' | 'contacts'
 
@@ -179,11 +179,15 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
     swrFetcher,
   )
 
-  const { data: catalogData } = useSWR<{ items: Array<{ id: string; name: string; sku: string }> }>(
+  const { data: catalogData } = useSWR<{
+    data?: Array<{ id: string; name: string; sku: string }>
+  } | Array<{ id: string; name: string; sku: string }>>(
     tab === 'products' ? '/inventory/products?limit=100' : null,
     swrFetcher,
   )
-  const catalogProducts = catalogData?.items ?? []
+  const catalogProducts = Array.isArray(catalogData)
+    ? catalogData
+    : (catalogData?.data ?? [])
 
   const current = { ...supplier, ...form } as SupplierDetail
   const maskedBank = supplier?.bankDetailsMasked
@@ -193,7 +197,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
     if (!unlockPassword.trim()) return
     try {
       const params = new URLSearchParams({ unlockPassword })
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}?${params}`)
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error?.message ?? 'Unlock failed')
       if (json.data.bankDetails) {
@@ -213,7 +217,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
     if (!supplier) return
     setSaving(true)
     try {
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}`, {
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +255,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
   async function addProduct() {
     if (!productForm.productId || !productForm.unitCost) return
     try {
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}/products`, {
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,6 +264,8 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
           unitCost: Number(productForm.unitCost),
           leadTimeDays: Number(productForm.leadTimeDays),
           minOrderQty: Number(productForm.minOrderQty),
+          // Preferred so Reorder Centre can group this product under this supplier
+          isPreferred: true,
         }),
       })
       const json = await res.json()
@@ -275,7 +281,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
   async function saveProductEdit() {
     if (!editingProduct) return
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `/api/inventory/suppliers/${supplierId}/products?linkId=${editingProduct.id}`,
         {
           method: 'PUT',
@@ -301,7 +307,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
 
   async function togglePreferred(row: SupplierProduct) {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `/api/inventory/suppliers/${supplierId}/products?linkId=${row.id}`,
         {
           method: 'PUT',
@@ -321,7 +327,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}/products`, {
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}/products`, {
         method: 'POST',
         body: form,
       })
@@ -339,7 +345,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
   async function addContact() {
     if (!newContact.name.trim()) return
     try {
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}/contacts`, {
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newContact, isPrimary: contacts.length === 0 }),
@@ -356,7 +362,7 @@ export function SupplierDetailClient({ supplierId }: { supplierId: string }) {
 
   async function removeContact(contactId: string) {
     try {
-      const res = await fetch(`/api/inventory/suppliers/${supplierId}/contacts?contactId=${contactId}`, {
+      const res = await authFetch(`/api/inventory/suppliers/${supplierId}/contacts?contactId=${contactId}`, {
         method: 'DELETE',
       })
       if (!res.ok) throw new Error('Delete failed')

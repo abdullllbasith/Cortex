@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { FormProvider } from 'react-hook-form'
 import { Button } from '@/components/ui'
 import { FormInput, FormCheckbox } from '@/components/forms'
@@ -75,7 +75,6 @@ async function bootstrapSession(payload: {
 }
 
 export function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [serverError, setServerError] = useState<string | null>(null)
   const [tenantSlug, setTenantSlug] = useState<string | null>(null)
@@ -152,11 +151,17 @@ export function LoginForm() {
         const mfaUrl = searchParams.get('redirect')
           ? `/mfa/verify?redirect=${encodeURIComponent(searchParams.get('redirect')!)}`
           : '/mfa/verify'
-        router.push(mfaUrl)
+        window.location.assign(mfaUrl)
         return
       }
 
-      router.push(searchParams.get('redirect') ?? '/dashboard')
+      const redirect = searchParams.get('redirect')
+      const next =
+        redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+          ? redirect
+          : '/dashboard'
+      // Hard navigation so the httpOnly refresh cookie is present for middleware.
+      window.location.assign(next)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign in failed'
       if (message.toLowerCase().includes('email')) {

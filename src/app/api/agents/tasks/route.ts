@@ -11,6 +11,15 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
 })
 
+const deleteSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('one'), taskId: z.string().min(1) }),
+  z.object({
+    mode: z.literal('completed'),
+    /** Also remove failed / dead-letter when clearing the finished batch */
+    includeFailed: z.boolean().optional().default(true),
+  }),
+])
+
 export const GET = withTenantAuth(async (request, { auth }) => {
   try {
     const query = querySchema.parse(parseQuery(request))
@@ -52,6 +61,48 @@ export const GET = withTenantAuth(async (request, { auth }) => {
         }),
       ),
     )
+  } catch (err) {
+    return handleRouteError(err)
+  }
+})
+
+export const DELETE = withTenantAuth(async (request, { auth }) => {
+  try {
+    const body = deleteSchema.parse(await request.json())
+
+    if (body.mode === 'one') {
+      const existing = await prisma.agentTask.findFirst({
+        where: { id: body.taskId, tenantId: auth.tenantId },
+        select: { id: true, status: true },
+      })
+      if (!existing) {
+        return NextResponse.json(
+          { success: false, error: { message: 'Task not found' } },
+          { status: 404 },
+        )
+      }
+      if (existing.status === 'PENDING' || existing.status === 'PROCESSING') {
+        return NextResponse.json(
+          { success: false, error: { message: 'Cannot clear an active task' } },
+          { status: 400 },
+        )
+      }
+      await prisma.agentTask.delete({ where: { id: existing.id } })
+      return NextResponse.json(apiSuccess({ deleted: 1, ids: [existing.id] }))
+    }
+
+    const statuses = body.includeFailed
+      ? (['COMPLETED', 'FAILED', 'DEAD_LETTER'] as const)
+      : (['COMPLETED'] as const)
+
+    const result = await prisma.agentTask.deleteMany({
+      where: {
+        tenantId: auth.tenantId,
+        status: { in: [...statuses] },
+      },
+    })
+
+    return NextResponse.json(apiSuccess({ deleted: result.count }))
   } catch (err) {
     return handleRouteError(err)
   }

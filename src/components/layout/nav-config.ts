@@ -18,11 +18,14 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { PERMISSIONS, type Permission } from '@/lib/auth/permissions'
 
 export interface NavItem {
   label: string
   href: string
   icon: LucideIcon
+  /** Required permission to show this item; omit for always-visible signed-in routes */
+  permission?: Permission
   /** Optional badge label (count or text) */
   badge?: string | number
   badgeVariant?: 'default' | 'danger'
@@ -43,48 +46,123 @@ export const navSections: NavSection[] = [
   {
     label: 'OPERATIONS',
     items: [
-      { label: 'Inventory', href: '/inventory', icon: Package },
-      { label: 'Reorder', href: '/inventory/reorder', icon: RefreshCw, badgeVariant: 'danger' },
+      {
+        label: 'Inventory',
+        href: '/inventory',
+        icon: Package,
+        permission: PERMISSIONS.INVENTORY_VIEW,
+      },
+      {
+        label: 'Reorder',
+        href: '/inventory/reorder',
+        icon: RefreshCw,
+        badgeVariant: 'danger',
+        permission: PERMISSIONS.INVENTORY_VIEW,
+      },
     ],
   },
   {
     label: 'BUSINESS',
     items: [
-      { label: 'CRM', href: '/crm', icon: Users2 },
-      { label: 'Sales', href: '/sales/quotes', icon: ShoppingCart },
-      { label: 'Finance', href: '/finance', icon: DollarSign },
+      { label: 'CRM', href: '/crm', icon: Users2, permission: PERMISSIONS.CRM_VIEW },
+      {
+        label: 'Sales',
+        href: '/sales/quotes',
+        icon: ShoppingCart,
+        permission: PERMISSIONS.SALES_VIEW,
+      },
+      {
+        label: 'Finance',
+        href: '/finance',
+        icon: DollarSign,
+        permission: PERMISSIONS.FINANCE_VIEW,
+      },
     ],
   },
   {
     label: 'INTELLIGENCE',
     items: [
-      { label: 'AI Executive Assistant', href: '/assistant', icon: Bot },
-      { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
-      { label: 'Agents', href: '/agents', icon: Cpu },
+      {
+        label: 'AI Executive Assistant',
+        href: '/assistant',
+        icon: Bot,
+        permission: PERMISSIONS.AGENTS_USE,
+      },
+      {
+        label: 'Knowledge Base',
+        href: '/knowledge',
+        icon: BookOpen,
+        permission: PERMISSIONS.KNOWLEDGE_READ,
+      },
+      { label: 'Agents', href: '/agents', icon: Cpu, permission: PERMISSIONS.AGENTS_USE },
     ],
   },
   {
     label: 'ANALYTICS & AUTOMATION',
     items: [
-      { label: 'Analytics', href: '/analytics', icon: BarChart3 },
-      { label: 'Predictions', href: '/predictions', icon: TrendingUp },
-      { label: 'Workflows', href: '/workflows', icon: GitBranch },
+      {
+        label: 'Analytics',
+        href: '/analytics',
+        icon: BarChart3,
+        permission: PERMISSIONS.ANALYTICS_VIEW,
+      },
+      {
+        label: 'Predictions',
+        href: '/predictions',
+        icon: TrendingUp,
+        permission: PERMISSIONS.PREDICTIONS_VIEW,
+      },
+      {
+        label: 'Workflows',
+        href: '/workflows',
+        icon: GitBranch,
+        permission: PERMISSIONS.WORKFLOWS_VIEW,
+      },
     ],
   },
   {
     label: 'PEOPLE',
-    items: [{ label: 'HR', href: '/hr', icon: UserSquare2 }],
+    items: [{ label: 'HR', href: '/hr', icon: UserSquare2, permission: PERMISSIONS.HR_VIEW }],
   },
   {
     label: 'PLATFORM',
     items: [
-      { label: 'Notifications', href: '/notifications', icon: Bell },
-      { label: 'Alerts', href: '/alerts', icon: AlertTriangle },
-      { label: 'Billing', href: '/settings/billing', icon: CreditCard },
+      {
+        label: 'Notifications',
+        href: '/notifications',
+        icon: Bell,
+        permission: PERMISSIONS.PREDICTIONS_VIEW,
+      },
+      {
+        label: 'Alerts',
+        href: '/alerts',
+        icon: AlertTriangle,
+        permission: PERMISSIONS.PREDICTIONS_VIEW,
+      },
+      {
+        label: 'Billing',
+        href: '/settings/billing',
+        icon: CreditCard,
+        permission: PERMISSIONS.BILLING_MANAGE,
+      },
       { label: 'Settings', href: '/settings', icon: Settings },
     ],
   },
 ]
+
+export function filterNavSections(
+  sections: NavSection[],
+  hasPermission: (permission: string) => boolean,
+): NavSection[] {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => !item.permission || hasPermission(item.permission),
+      ),
+    }))
+    .filter((section) => section.items.length > 0)
+}
 
 /** All nav items flat — used by CommandPalette and isActive helpers */
 export const allNavItems: NavItem[] = navSections.flatMap((s) => s.items)

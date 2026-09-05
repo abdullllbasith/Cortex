@@ -13,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { PageHeader, Button, Card, CardBody, Badge, Input, toast, ConfirmDialog } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 interface CategoryTreeNode {
   id: string
@@ -184,7 +184,7 @@ export function CategoriesPageClient() {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/inventory/categories', {
+      const res = await authFetch('/api/inventory/categories', {
         method: editor.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -208,7 +208,7 @@ export function CategoriesPageClient() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
-    const res = await fetch(`/api/inventory/categories?id=${deleteTarget.id}`, {
+    const res = await authFetch(`/api/inventory/categories?id=${deleteTarget.id}`, {
       method: 'DELETE',
       credentials: 'include',
     })
@@ -223,7 +223,7 @@ export function CategoriesPageClient() {
   }
 
   const onReparent = async (id: string, parentId: string | null, siblingOrder: string[]) => {
-    const res = await fetch('/api/inventory/categories', {
+    const res = await authFetch('/api/inventory/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

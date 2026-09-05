@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { handleRouteError } from '@/lib/knowledge/apiHandler'
 import { apiSuccess } from '@/lib/knowledge/response'
-import { privateCacheHeaders } from '@/lib/http/cacheHeaders'
+import { noStoreHeaders } from '@/lib/http/cacheHeaders'
 import { requirePermission } from '@/lib/auth/rbac'
 import { PERMISSIONS } from '@/lib/auth/permissions'
 import { profileUpdateSchema } from '@/lib/settings/schemas'
@@ -11,7 +11,8 @@ export const GET = requirePermission(PERMISSIONS.KNOWLEDGE_READ)(
   async (_request, { auth }) => {
     try {
       const data = await getUserProfile(auth.userId, auth.tenantId)
-      return NextResponse.json(apiSuccess(data), { headers: privateCacheHeaders(60, 300) })
+      // MFA/security fields must not be served from a stale browser cache
+      return NextResponse.json(apiSuccess(data), { headers: noStoreHeaders() })
     } catch (err) {
       return handleRouteError(err)
     }

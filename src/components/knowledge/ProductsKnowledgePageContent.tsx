@@ -17,7 +17,7 @@ import {
 } from '@/components/ui'
 import { ResponsiveContainer } from '@/components/layout/ResponsiveContainer'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { apiClient, swrFetcher } from '@/lib/api/apiClient'
+import { apiClient, swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { StockBadge, type StockHealth } from '@/components/inventory/StockBadge'
 import { useDebounce } from '@/hooks/useDebounce'
 
@@ -119,7 +119,7 @@ export function ProductsKnowledgePageContent() {
 
   const handleImport = useCallback(async (file: File) => {
     const text = await file.text()
-    const res = await fetch('/api/inventory/import', {
+    const res = await authFetch('/api/inventory/import', {
       method: 'POST',
       headers: { 'Content-Type': 'text/csv' },
       credentials: 'include',

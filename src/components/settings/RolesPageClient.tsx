@@ -20,7 +20,7 @@ import {
   ConfirmDialog,
   toast,
 } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { ROLE_LABELS } from '@/lib/settings/roleDefinitions'
 import { BUILTIN_ROLES } from '@/lib/settings/permissionCategories'
 import type { CustomRoleDTO } from '@/lib/settings/rolesService'
@@ -161,7 +161,7 @@ export function RolesPageClient() {
       const prevDirty = new Set(dirtyRoles)
 
       try {
-        const res = await fetch(`/api/settings/roles/${roleId}/permissions`, {
+        const res = await authFetch(`/api/settings/roles/${roleId}/permissions`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -200,7 +200,7 @@ export function RolesPageClient() {
       toast.error('Role name is required')
       return
     }
-    const res = await fetch('/api/settings/roles', {
+    const res = await authFetch('/api/settings/roles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -224,7 +224,7 @@ export function RolesPageClient() {
 
   const deleteCustomRole = async () => {
     if (!deleteTarget) return
-    const res = await fetch(`/api/settings/roles/${deleteTarget.id}`, {
+    const res = await authFetch(`/api/settings/roles/${deleteTarget.id}`, {
       method: 'DELETE',
       credentials: 'include',
     })

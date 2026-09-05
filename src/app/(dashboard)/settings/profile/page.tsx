@@ -9,7 +9,7 @@ import { PageHeader, Button, Skeleton, Avatar, Badge } from '@/components/ui'
 import { toast } from '@/components/ui'
 import { FormSection, FormInput, FormSelect, FormFileUpload } from '@/components/forms'
 import { useAppForm } from '@/lib/forms/formConfig'
-import { swrFetcher, apiClient } from '@/lib/api/apiClient'
+import { swrFetcher, apiClient, authFetch } from '@/lib/api/apiClient'
 import { TIMEZONES } from '@/lib/auth/constants'
 import type { UserProfileDTO, UserSessionDTO } from '@/lib/settings/types'
 import { updatePassword } from '@/lib/supabase/auth'
@@ -141,13 +141,13 @@ export default function ProfileSettingsPage() {
   }
 
   async function revokeSession(id: string) {
-    await fetch(`/api/settings/sessions?id=${id}`, { method: 'DELETE', credentials: 'include' })
+    await authFetch(`/api/settings/sessions?id=${id}`, { method: 'DELETE', credentials: 'include' })
     toast.success('Session revoked')
     void mutateSessions()
   }
 
   async function revokeAllOthers() {
-    await fetch('/api/settings/sessions?all=true', { method: 'DELETE', credentials: 'include' })
+    await authFetch('/api/settings/sessions?all=true', { method: 'DELETE', credentials: 'include' })
     toast.success('Other sessions logged out')
     void mutateSessions()
   }

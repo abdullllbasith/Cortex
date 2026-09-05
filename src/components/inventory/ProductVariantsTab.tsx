@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { Grid3X3, Plus, Save, Trash2, Wand2 } from 'lucide-react'
 import { Button, Card, CardBody, Input, toast } from '@/components/ui'
 import { BarcodeField } from '@/components/inventory/BarcodeField'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 interface VariantRow {
   id?: string
@@ -89,7 +89,7 @@ export function ProductVariantsTab({ productId, productSku }: { productId: strin
         toast.error('Define at least one attribute with values')
         return
       }
-      const res = await fetch(`/api/inventory/products/${productId}/variants`, {
+      const res = await authFetch(`/api/inventory/products/${productId}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -121,7 +121,7 @@ export function ProductVariantsTab({ productId, productSku }: { productId: strin
         imageUrl: v.imageUrl || null,
         isActive: v.isActive,
       }))
-      const res = await fetch(`/api/inventory/products/${productId}/variants`, {
+      const res = await authFetch(`/api/inventory/products/${productId}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -145,7 +145,7 @@ export function ProductVariantsTab({ productId, productSku }: { productId: strin
         toast.error('Save variant first before generating barcode')
         return
       }
-      const res = await fetch(`/api/inventory/products/${productId}/variants`, {
+      const res = await authFetch(`/api/inventory/products/${productId}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

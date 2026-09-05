@@ -62,6 +62,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
+  /** Keep chrome stable when the soft keyboard opens (app-like shells). */
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)',  color: '#0f172a' },
@@ -79,7 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body
         suppressHydrationWarning
-        className="min-h-screen bg-background font-body antialiased"
+        className="min-h-dvh bg-background font-body antialiased"
       >
         <AppProviders>{children}</AppProviders>
       </body>

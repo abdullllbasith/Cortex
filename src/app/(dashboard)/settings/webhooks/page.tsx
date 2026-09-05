@@ -17,7 +17,7 @@ import {
   Card,
   CardBody,
 } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { toast } from '@/components/ui'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -62,7 +62,7 @@ export default function WebhooksSettingsPage() {
   const eventGroups = data?.eventGroups ?? {}
 
   async function createWebhook() {
-    const res = await fetch('/api/settings/webhooks', {
+    const res = await authFetch('/api/settings/webhooks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -80,13 +80,13 @@ export default function WebhooksSettingsPage() {
   }
 
   async function deleteWebhook(id: string) {
-    await fetch(`/api/settings/webhooks?id=${id}`, { method: 'DELETE', credentials: 'include' })
+    await authFetch(`/api/settings/webhooks?id=${id}`, { method: 'DELETE', credentials: 'include' })
     mutate()
     toast.success('Webhook deleted')
   }
 
   async function testWebhook(id: string) {
-    const res = await fetch('/api/settings/webhooks', {
+    const res = await authFetch('/api/settings/webhooks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -101,7 +101,7 @@ export default function WebhooksSettingsPage() {
   }
 
   async function retryDelivery(deliveryId: string) {
-    await fetch('/api/settings/webhooks', {
+    await authFetch('/api/settings/webhooks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

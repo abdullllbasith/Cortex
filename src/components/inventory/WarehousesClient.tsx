@@ -19,7 +19,7 @@ import {
   ModalFooter,
   ModalTitle,
 } from '@/components/ui/Modal'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 interface WarehouseCard {
   id: string
@@ -86,7 +86,7 @@ export function WarehousesClient() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/transfers', {
+      const res = await authFetch('/api/inventory/transfers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -120,7 +120,7 @@ export function WarehousesClient() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/warehouses', {
+      const res = await authFetch('/api/inventory/warehouses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

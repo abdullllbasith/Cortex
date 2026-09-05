@@ -15,7 +15,7 @@ import {
   toast,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 type SupplierType = 'MANUFACTURER' | 'DISTRIBUTOR' | 'WHOLESALER' | 'SERVICE_PROVIDER'
 type PaymentTerms = 'IMMEDIATE' | 'NET15' | 'NET30' | 'NET45' | 'NET60'
@@ -126,7 +126,7 @@ export function SuppliersPageClient() {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/inventory/suppliers/import', { method: 'POST', body: form })
+      const res = await authFetch('/api/inventory/suppliers/import', { method: 'POST', body: form })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error?.message ?? 'Import failed')
       toast.success(`Imported ${json.data.imported} supplier(s)`)

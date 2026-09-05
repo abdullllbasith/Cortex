@@ -11,18 +11,39 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isNavItemActive } from './nav-config'
+import { PERMISSIONS } from '@/lib/auth/permissions'
+import { useSessionStore } from '@/store/sessionStore'
 
 const items = [
-  { label: 'Home',       href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Assistant',  href: '/assistant', icon: Bot },
-  { label: 'Analytics',  href: '/analytics', icon: BarChart3 },
-  { label: 'Workflows',  href: '/workflows', icon: GitBranch },
-  { label: 'Settings',   href: '/settings',  icon: Settings },
+  { label: 'Home', href: '/dashboard', icon: LayoutDashboard },
+  {
+    label: 'Assistant',
+    href: '/assistant',
+    icon: Bot,
+    permission: PERMISSIONS.AGENTS_USE,
+  },
+  {
+    label: 'Analytics',
+    href: '/analytics',
+    icon: BarChart3,
+    permission: PERMISSIONS.ANALYTICS_VIEW,
+  },
+  {
+    label: 'Workflows',
+    href: '/workflows',
+    icon: GitBranch,
+    permission: PERMISSIONS.WORKFLOWS_VIEW,
+  },
+  { label: 'Settings', href: '/settings', icon: Settings },
 ] as const
 
 /** Mobile-only sticky bottom navigation (hidden from md breakpoint up). */
 export function BottomNav() {
   const pathname = usePathname()
+  const hasPermission = useSessionStore((s) => s.hasPermission)
+  const visible = items.filter(
+    (item) => !('permission' in item && item.permission) || hasPermission(item.permission),
+  )
 
   return (
     <nav
@@ -35,7 +56,7 @@ export function BottomNav() {
       )}
     >
       <ul className="flex h-16 items-stretch">
-        {items.map(({ label, href, icon: Icon }) => {
+        {visible.map(({ label, href, icon: Icon }) => {
           const active = isNavItemActive(href, pathname)
           return (
             <li key={href} className="flex-1">

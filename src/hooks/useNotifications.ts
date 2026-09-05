@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { queryKeys } from '@/lib/api/queryKeys'
 import { useNotificationStore } from '@/store/notificationStore'
 import type { NotificationDTO, SseEvent } from '@/lib/notifications/types'
@@ -57,7 +57,7 @@ async function registerPush() {
       applicationServerKey: vapidKey,
     })
     const json = sub.toJSON()
-    await fetch('/api/notifications/push/subscribe', {
+    await authFetch('/api/notifications/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -139,7 +139,7 @@ export function useNotifications(
   const markRead = useCallback(
     async (id: string) => {
       markReadLocal(id)
-      await fetch(`/api/notifications/${id}/read`, { method: 'PATCH', credentials: 'include' })
+      await authFetch(`/api/notifications/${id}/read`, { method: 'PATCH', credentials: 'include' })
       void mutate()
     },
     [markReadLocal, mutate],
@@ -147,21 +147,21 @@ export function useNotifications(
 
   const markAllRead = useCallback(async () => {
     markAllReadLocal()
-    await fetch('/api/notifications/read-all', { method: 'PATCH', credentials: 'include' })
+    await authFetch('/api/notifications/read-all', { method: 'PATCH', credentials: 'include' })
     void mutate()
   }, [markAllReadLocal, mutate])
 
   const removeNotification = useCallback(
     async (id: string) => {
       removeLocal(id)
-      await fetch(`/api/notifications/${id}`, { method: 'DELETE', credentials: 'include' })
+      await authFetch(`/api/notifications/${id}`, { method: 'DELETE', credentials: 'include' })
       void mutate()
     },
     [removeLocal, mutate],
   )
 
   const clearRead = useCallback(async () => {
-    await fetch('/api/notifications/clear', { method: 'DELETE', credentials: 'include' })
+    await authFetch('/api/notifications/clear', { method: 'DELETE', credentials: 'include' })
     void mutate()
   }, [mutate])
 

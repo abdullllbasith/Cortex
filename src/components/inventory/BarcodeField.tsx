@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 import { Barcode, Loader2 } from 'lucide-react'
 import { Button, Input, toast } from '@/components/ui'
+import { authFetch } from '@/lib/api/apiClient'
 
 interface BarcodeFieldProps {
   value: string
@@ -18,7 +19,7 @@ export function BarcodeField({ value, onChange, label = 'Barcode', className }: 
   const generate = useCallback(async () => {
     setGenerating(true)
     try {
-      const res = await fetch('/api/inventory/products/barcode/generate', {
+      const res = await authFetch('/api/inventory/products/barcode/generate', {
         method: 'POST',
         credentials: 'include',
       })

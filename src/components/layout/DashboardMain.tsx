@@ -18,7 +18,8 @@ export function DashboardMain({ children }: { children: React.ReactNode }) {
       className={cn(
         'flex min-h-0 flex-1 flex-col bg-white dark:bg-slate-900',
         'pb-16 md:pb-0',
-        fullHeight ? 'overflow-hidden' : 'overflow-y-auto',
+        'overscroll-y-contain',
+        fullHeight ? 'overflow-hidden' : 'scroll-area overflow-y-auto',
       )}
     >
       {children}

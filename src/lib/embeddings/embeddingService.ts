@@ -4,6 +4,7 @@ import {
   EMBEDDING_MODEL,
   EmbeddingError,
   embeddingSupportsDimensionsParam,
+  truncateForEmbedding,
 } from './types'
 
 let embeddingClient: OpenAI | null = null
@@ -111,7 +112,7 @@ function buildEmbeddingCreateParams(input: string | string[]) {
  * Handles rate limits with exponential backoff (max 3 retries).
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const input = text.trim()
+  const input = truncateForEmbedding(text)
   if (!input) {
     throw new EmbeddingError('Cannot embed empty text', 'EMPTY_INPUT')
   }
@@ -179,8 +180,10 @@ export async function generateEmbeddingsBatch(texts: string[]): Promise<number[]
     throw new EmbeddingError('Batch size exceeds maximum of 100', 'BATCH_TOO_LARGE')
   }
 
+  const inputs = texts.map((t) => truncateForEmbedding(t))
+
   if (process.env.AUTH_DEV_MODE === 'true' && !resolveEmbeddingApiKey()) {
-    return texts.map(mockEmbedding)
+    return inputs.map(mockEmbedding)
   }
 
   const client = getEmbeddingClient()
@@ -188,9 +191,7 @@ export async function generateEmbeddingsBatch(texts: string[]): Promise<number[]
 
   while (attempt < 3) {
     try {
-      const response = await client.embeddings.create(
-        buildEmbeddingCreateParams(texts.map((t) => t.trim())),
-      )
+      const response = await client.embeddings.create(buildEmbeddingCreateParams(inputs))
 
       return response.data
         .sort((a, b) => a.index - b.index)
@@ -203,6 +204,7 @@ export async function generateEmbeddingsBatch(texts: string[]): Promise<number[]
         continue
       }
       const message = err instanceof Error ? err.message : 'Batch embedding failed'
+      console.error('[embeddingService] batch embed failed:', message)
       throw new EmbeddingError(message, 'BATCH_EMBEDDING_FAILED')
     }
   }

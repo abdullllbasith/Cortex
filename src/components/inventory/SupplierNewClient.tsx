@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
 import { PageHeader, Button, Card, CardBody, Input, toast } from '@/components/ui'
+import { authFetch } from '@/lib/api/apiClient'
 
 const selectClass =
   'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900'
@@ -43,7 +44,7 @@ export function SupplierNewClient() {
   async function submit() {
     setSaving(true)
     try {
-      const res = await fetch('/api/inventory/suppliers', {
+      const res = await authFetch('/api/inventory/suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

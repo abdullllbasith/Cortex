@@ -119,7 +119,11 @@ export async function getLastReorderCheck(tenantId: string): Promise<string | nu
   return settings.inventory?.lastReorderCheck ?? null
 }
 
-/** Low-stock rows from StockBalance × Product (includes NORMAL band up to 1.2× reorder point). */
+/** Low-stock rows from StockBalance × Product.
+ * Includes:
+ * - on hand at or below reorder point (when reorderPoint > 0)
+ * - fully out of stock (on hand <= 0), even if reorderPoint was never configured
+ */
 export async function checkReorderPoints(
   tenantId: string,
   options?: { skipTouch?: boolean },
@@ -150,16 +154,19 @@ export async function checkReorderPoints(
         AND p."tenantId" = ${tenantId}
         AND p."isActive" = true
         AND p."trackInventory" = true
-        AND p."reorderPoint" > 0
       GROUP BY sb."productId", p."reorderPoint", p."reorderQuantity", p."supplierId", p."name", p."sku"
-      HAVING COALESCE(SUM(sb."quantityOnHand"), 0) <= p."reorderPoint" * 1.2
+      HAVING
+        COALESCE(SUM(sb."quantityOnHand"), 0) <= 0
+        OR (
+          p."reorderPoint" > 0
+          AND COALESCE(SUM(sb."quantityOnHand"), 0) <= p."reorderPoint" * 1.2
+        )
     `,
     prisma.product.findMany({
       where: {
         tenantId,
         isActive: true,
         trackInventory: true,
-        reorderPoint: { gt: 0 },
         stockBalances: { none: {} },
       },
       select: {
@@ -191,7 +198,6 @@ export async function checkReorderPoints(
 
   for (const p of productsWithoutBalance) {
     const reorderPoint = toNumber(p.reorderPoint)
-    if (reorderPoint <= 0) continue
     alerts.push({
       productId: p.id,
       productName: p.name,
@@ -346,9 +352,10 @@ export async function generateReorderSuggestions(
         ? calculateEOQ(annualDemand, 50, Math.max(toNumber(product.costPrice) * 0.2, 1))
         : 0
     const suggestedQty = Math.max(
-      reorderQty || reorderPoint,
+      reorderQty || reorderPoint || 1,
       eoq || 0,
-      Math.ceil(reorderPoint - onHand + (reorderQty || reorderPoint)),
+      Math.ceil(Math.max(reorderPoint - onHand, 0) + (reorderQty || reorderPoint || 1)),
+      1,
     )
     const unitCost = supplierLink ? toNumber(supplierLink.unitCost) : toNumber(product.costPrice)
     const leadTimeDays = supplierLink?.leadTimeDays ?? product.leadTimeDays ?? 7
@@ -478,7 +485,8 @@ export async function notifyStockThreshold(
   quantityOnHand: number,
 ): Promise<void> {
   const reorderPoint = toNumber(product.reorderPoint)
-  if (reorderPoint <= 0 || quantityOnHand > reorderPoint) return
+  // Always alert when out of stock; otherwise require a configured reorder point
+  if (quantityOnHand > 0 && (reorderPoint <= 0 || quantityOnHand > reorderPoint)) return
 
   const isCritical = quantityOnHand <= 0
   await notificationService.send({

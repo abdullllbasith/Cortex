@@ -6,6 +6,10 @@ import {
   ALL_PERMISSIONS,
 } from '@/lib/auth/permissions'
 
+/**
+ * Category toggles in Roles & Permissions grant/revoke the full set below.
+ * Matrix checkbox is ON when the role has every permission in the category.
+ */
 export const PERMISSION_CATEGORIES: Record<string, Permission[]> = {
   Knowledge: [
     PERMISSIONS.KNOWLEDGE_READ,
@@ -17,6 +21,9 @@ export const PERMISSION_CATEGORIES: Record<string, Permission[]> = {
     PERMISSIONS.ANALYTICS_EXPORT,
     PERMISSIONS.PREDICTIONS_VIEW,
   ],
+  Inventory: [PERMISSIONS.INVENTORY_VIEW, PERMISSIONS.INVENTORY_MANAGE],
+  CRM: [PERMISSIONS.CRM_VIEW, PERMISSIONS.CRM_MANAGE],
+  Sales: [PERMISSIONS.SALES_VIEW, PERMISSIONS.SALES_MANAGE],
   Workflows: [
     PERMISSIONS.WORKFLOWS_VIEW,
     PERMISSIONS.WORKFLOWS_CREATE,
@@ -24,7 +31,7 @@ export const PERMISSION_CATEGORIES: Record<string, Permission[]> = {
     PERMISSIONS.WORKFLOWS_DELETE,
   ],
   Agents: [PERMISSIONS.AGENTS_USE, PERMISSIONS.AGENTS_CONFIGURE],
-  Finance: [PERMISSIONS.BILLING_MANAGE, PERMISSIONS.FINANCE_VIEW, PERMISSIONS.FINANCE_MANAGE],
+  Finance: [PERMISSIONS.FINANCE_VIEW, PERMISSIONS.FINANCE_MANAGE, PERMISSIONS.BILLING_MANAGE],
   HR: [PERMISSIONS.HR_VIEW, PERMISSIONS.HR_MANAGE, PERMISSIONS.TEAM_MANAGE],
   Admin: [
     PERMISSIONS.SETTINGS_MANAGE,
@@ -36,6 +43,20 @@ export const PERMISSION_CATEGORIES: Record<string, Permission[]> = {
 }
 
 export const CATEGORY_ORDER = Object.keys(PERMISSION_CATEGORIES)
+
+/** Primary module-access flag for matrix checkbox state (supports partial default grants). */
+export const CATEGORY_ACCESS_GATE: Record<string, Permission> = {
+  Knowledge: PERMISSIONS.KNOWLEDGE_READ,
+  Analytics: PERMISSIONS.ANALYTICS_VIEW,
+  Inventory: PERMISSIONS.INVENTORY_VIEW,
+  CRM: PERMISSIONS.CRM_VIEW,
+  Sales: PERMISSIONS.SALES_VIEW,
+  Workflows: PERMISSIONS.WORKFLOWS_VIEW,
+  Agents: PERMISSIONS.AGENTS_USE,
+  Finance: PERMISSIONS.FINANCE_VIEW,
+  HR: PERMISSIONS.HR_VIEW,
+  Admin: PERMISSIONS.SETTINGS_MANAGE,
+}
 
 export const BUILTIN_ROLES: UserRole[] = [
   'OWNER',
@@ -54,6 +75,8 @@ export function categoryHasAllPermissions(
   category: string,
   granted: Permission[],
 ): boolean {
+  const gate = CATEGORY_ACCESS_GATE[category]
+  if (gate) return granted.includes(gate)
   const perms = permissionsForCategory(category)
   return perms.length > 0 && perms.every((p) => granted.includes(p))
 }

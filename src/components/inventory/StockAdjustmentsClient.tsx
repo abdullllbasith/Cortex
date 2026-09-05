@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { PageHeader, Button, Card, CardBody, Input, toast, ConfirmDialog } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { BarcodeScanner, type BarcodeScanResult } from '@/components/inventory/BarcodeScanner'
 
 const selectClass =
@@ -52,7 +52,7 @@ export function StockAdjustmentsClient() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/adjustments', {
+      const res = await authFetch('/api/inventory/adjustments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

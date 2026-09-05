@@ -15,7 +15,7 @@ import {
   Modal,
 } from '@/components/ui'
 import { DataTable, type ColumnDef } from '@/components/data/DataTable'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 import { ProductCard, type ProductCardData } from '@/components/inventory/ProductCard'
 import { StockBadge, type StockHealth } from '@/components/inventory/StockBadge'
 import { StockLevelBar } from '@/components/inventory/StockLevelBar'
@@ -127,7 +127,7 @@ export function ProductCatalogClient() {
   const handleImportFile = useCallback(async (file: File) => {
     const rows = await parseCsvFile(file)
     setImportRows(rows)
-    const res = await fetch('/api/inventory/import', {
+    const res = await authFetch('/api/inventory/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -145,7 +145,7 @@ export function ProductCatalogClient() {
   const confirmImport = async () => {
     setImporting(true)
     try {
-      const res = await fetch('/api/inventory/import', {
+      const res = await authFetch('/api/inventory/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -169,7 +169,7 @@ export function ProductCatalogClient() {
     const ids = [...selected]
     if (!ids.length) return
     if (action === 'export') {
-      const res = await fetch('/api/inventory/products/bulk', {
+      const res = await authFetch('/api/inventory/products/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -193,7 +193,7 @@ export function ProductCatalogClient() {
         ...(bulkPrice && { sellingPrice: Number(bulkPrice) }),
       }
     }
-    const res = await fetch('/api/inventory/products/bulk', {
+    const res = await authFetch('/api/inventory/products/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

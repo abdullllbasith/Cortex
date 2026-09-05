@@ -12,7 +12,12 @@ export async function POST(request: NextRequest) {
 
     const session = await validateRefreshToken(refreshToken)
     if (!session || !session.user.isActive) {
-      return NextResponse.json({ success: false, error: { message: 'Session expired' } }, { status: 401 })
+      const response = NextResponse.json(
+        { success: false, error: { message: 'Session expired' } },
+        { status: 401 },
+      )
+      response.cookies.delete('saios_refresh')
+      return response
     }
 
     await revokeSession(refreshToken)
@@ -28,6 +33,14 @@ export async function POST(request: NextRequest) {
       data: {
         accessToken: issued.accessToken,
         permissions: issued.permissions,
+        user: {
+          id: issued.user.id,
+          email: issued.user.email,
+          name: issued.user.fullName,
+          role: issued.user.role.toLowerCase(),
+          avatarUrl: issued.user.avatarUrl,
+        },
+        tenant: issued.tenant,
       },
     })
     setRefreshCookie(response, issued.refreshToken, rememberMe)

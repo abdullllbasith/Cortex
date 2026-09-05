@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Avatar, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
-import { navSections, isNavItemActive, type NavItem } from './nav-config'
+import { navSections, filterNavSections, isNavItemActive, type NavItem } from './nav-config'
 import { TenantLogoMark } from '@/components/branding/TenantLogoMark'
 import { useSessionStore } from '@/store/sessionStore'
 import { formatUserRole } from '@/lib/auth/displayUser'
@@ -25,9 +25,11 @@ export function MobileSidebar() {
   const { mobileOpen, closeMobile } = useSidebar()
   const pathname = usePathname()
   const user = useSessionStore((s) => s.user)
+  const hasPermission = useSessionStore((s) => s.hasPermission)
   const displayName = user?.name ?? 'User'
   const roleLabel = formatUserRole(user?.role)
   const reorderCount = useReorderSuggestionCount()
+  const visibleSections = filterNavSections(navSections, hasPermission)
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -98,7 +100,7 @@ export function MobileSidebar() {
         </div>
 
         <nav className="scroll-area scroll-area-dark flex-1 overflow-y-auto py-3">
-          {navSections.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.label} className="mb-1">
               <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 select-none first:mt-1">
                 {section.label}

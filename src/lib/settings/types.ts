@@ -68,6 +68,7 @@ export interface UserProfileDTO {
   avatarUrl: string | null
   timezone: string | null
   role: string
+  mfaEnabled: boolean
   profileSettings: UserProfileSettings
 }
 

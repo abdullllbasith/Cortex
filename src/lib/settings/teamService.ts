@@ -57,7 +57,11 @@ export async function getTeamOverview(tenantId: string): Promise<TeamOverviewDTO
 
   const [members, pendingInvites, pendingCount] = await Promise.all([
     prisma.user.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        // Soft-removed members are hidden from the roster
+        NOT: { email: { endsWith: '@deleted.local' } },
+      },
       select: {
         id: true,
         email: true,
@@ -180,6 +184,18 @@ export async function setMemberStatus(
     data: { isActive },
   })
 
+  if (!isActive) {
+    const { revokeAllSessionsForUser } = await import('@/lib/auth/sessionService')
+    await revokeAllSessionsForUser(target.id)
+    await prisma.apiKey.updateMany({
+      where: { userId: target.id, tenantId },
+      data: { isActive: false },
+    })
+    await banSupabaseUser(target.supabaseId, true)
+  } else {
+    await banSupabaseUser(target.supabaseId, false)
+  }
+
   return { userId: target.id, isActive }
 }
 
@@ -194,12 +210,64 @@ export async function removeMember(tenantId: string, userId: string, actorId: st
     if (ownerCount <= 1) throw new Error('Cannot remove the last workspace owner')
   }
 
-  await prisma.user.update({
-    where: { id: target.id },
-    data: { isActive: false, role: 'EMPLOYEE' },
+  const { revokeAllSessionsForUser } = await import('@/lib/auth/sessionService')
+  await revokeAllSessionsForUser(target.id)
+  await prisma.apiKey.updateMany({
+    where: { userId: target.id, tenantId },
+    data: { isActive: false },
   })
 
+  // Remove auth identity so they cannot sign in again; free email for re-invite
+  await deleteSupabaseUser(target.supabaseId)
+
+  try {
+    await prisma.user.delete({ where: { id: target.id } })
+  } catch {
+    // FK history may block hard delete — soft-remove and hide from roster
+    await prisma.user.update({
+      where: { id: target.id },
+      data: {
+        isActive: false,
+        email: `removed.${target.id}@deleted.local`,
+        supabaseId: `removed-${target.id}`,
+        fullName: `${target.fullName} (removed)`,
+        role: 'EMPLOYEE',
+        customRoleId: null,
+        mfaEnabled: false,
+        mfaSecretEnc: null,
+      },
+    })
+  }
+
   return { removed: true }
+}
+
+async function banSupabaseUser(supabaseId: string, banned: boolean) {
+  if (!supabaseId || supabaseId.startsWith('dev-') || supabaseId.startsWith('removed-')) return
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/auth/supabaseServer')
+    const admin = createSupabaseAdminClient()
+    if (!admin) return
+    if (banned) {
+      await admin.auth.admin.updateUserById(supabaseId, { ban_duration: '876000h' })
+    } else {
+      await admin.auth.admin.updateUserById(supabaseId, { ban_duration: 'none' })
+    }
+  } catch (err) {
+    console.warn('[team] supabase ban/unban failed', err)
+  }
+}
+
+async function deleteSupabaseUser(supabaseId: string) {
+  if (!supabaseId || supabaseId.startsWith('dev-') || supabaseId.startsWith('removed-')) return
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/auth/supabaseServer')
+    const admin = createSupabaseAdminClient()
+    if (!admin) return
+    await admin.auth.admin.deleteUser(supabaseId)
+  } catch (err) {
+    console.warn('[team] supabase delete user failed', err)
+  }
 }
 
 export async function createInvitations(
@@ -342,6 +410,152 @@ export async function revokeInvitation(tenantId: string, invitationId: string) {
   })
 
   return { revoked: true }
+}
+
+export class InviteAcceptError extends Error {
+  constructor(
+    message: string,
+    readonly status: number = 400,
+    readonly code?: string,
+  ) {
+    super(message)
+    this.name = 'InviteAcceptError'
+  }
+}
+
+export async function getInvitationByToken(token: string) {
+  const inv = await prisma.teamInvitation.findUnique({
+    where: { token },
+    include: {
+      tenant: { select: { id: true, name: true, slug: true, plan: true } },
+      invitedBy: { select: { fullName: true } },
+    },
+  })
+  if (!inv) return null
+
+  if (inv.status === 'PENDING' && inv.expiresAt.getTime() < Date.now()) {
+    await prisma.teamInvitation.update({
+      where: { id: inv.id },
+      data: { status: 'EXPIRED' },
+    })
+    return { ...inv, status: 'EXPIRED' as const }
+  }
+
+  return inv
+}
+
+/**
+ * Accept a team invite: create Supabase + Prisma user, mark invitation accepted.
+ * Does not require an existing auth session (invitee is not logged in yet).
+ */
+export async function acceptInvitation(token: string, password: string) {
+  const inv = await getInvitationByToken(token)
+  if (!inv) {
+    throw new InviteAcceptError('Invalid invitation link', 404, 'INVITE_NOT_FOUND')
+  }
+  if (inv.status === 'ACCEPTED') {
+    throw new InviteAcceptError('This invitation was already accepted. Please sign in.', 409, 'INVITE_ACCEPTED')
+  }
+  if (inv.status === 'REVOKED') {
+    throw new InviteAcceptError('This invitation was revoked. Ask your admin for a new invite.', 410, 'INVITE_REVOKED')
+  }
+  if (inv.status === 'EXPIRED' || inv.expiresAt.getTime() < Date.now()) {
+    if (inv.status === 'PENDING') {
+      await prisma.teamInvitation.update({ where: { id: inv.id }, data: { status: 'EXPIRED' } })
+    }
+    throw new InviteAcceptError('This invitation has expired. Ask your admin to resend it.', 410, 'INVITE_EXPIRED')
+  }
+  if (inv.status !== 'PENDING') {
+    throw new InviteAcceptError('This invitation is no longer valid', 400, 'INVITE_INVALID')
+  }
+
+  const email = inv.email.trim().toLowerCase()
+  const existingUser = await prisma.user.findUnique({ where: { email } })
+  if (existingUser) {
+    throw new InviteAcceptError(
+      'An account with this email already exists. Sign in instead.',
+      409,
+      'EMAIL_ALREADY_REGISTERED',
+    )
+  }
+
+  const activeCount = await prisma.user.count({
+    where: { tenantId: inv.tenantId, isActive: true },
+  })
+  const limits = PLAN_LIMITS[inv.tenant.plan]
+  if (activeCount >= limits.teamMembers) {
+    throw new InviteAcceptError(
+      `This workspace has reached its seat limit (${limits.teamMembers}). Ask the owner to upgrade.`,
+      403,
+      'SEAT_LIMIT',
+    )
+  }
+
+  const { createSupabaseAdminClient } = await import('@/lib/auth/supabaseServer')
+  const admin = createSupabaseAdminClient()
+  const fullName = email.split('@')[0] || 'Team member'
+  let supabaseId: string
+
+  if (admin) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        tenant_slug: inv.tenant.slug,
+        invited: true,
+      },
+    })
+    if (error || !data.user) {
+      const msg = error?.message ?? 'Could not create account'
+      if (/already|registered|exists/i.test(msg)) {
+        throw new InviteAcceptError(
+          'An account with this email already exists. Sign in instead.',
+          409,
+          'EMAIL_ALREADY_REGISTERED',
+        )
+      }
+      throw new InviteAcceptError(msg, 400, 'AUTH_CREATE_FAILED')
+    }
+    supabaseId = data.user.id
+  } else if (process.env.AUTH_DEV_MODE === 'true') {
+    supabaseId = `dev-invite-${email.replace(/[^a-z0-9]/gi, '-')}`
+  } else {
+    throw new InviteAcceptError('Authentication service unavailable', 503, 'AUTH_UNAVAILABLE')
+  }
+
+  try {
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          tenantId: inv.tenantId,
+          supabaseId,
+          email,
+          fullName,
+          role: inv.role,
+          customRoleId: inv.customRoleId,
+        },
+      })
+      await tx.teamInvitation.update({
+        where: { id: inv.id },
+        data: { status: 'ACCEPTED' },
+      })
+      return created
+    })
+
+    return {
+      user,
+      tenant: inv.tenant,
+      invitedByName: inv.invitedBy.fullName,
+    }
+  } catch (err) {
+    // Roll back orphaned Supabase user if DB write fails
+    if (admin && supabaseId) {
+      await admin.auth.admin.deleteUser(supabaseId).catch(() => undefined)
+    }
+    throw err
+  }
 }
 
 export async function bulkChangeRoles(

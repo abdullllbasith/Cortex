@@ -23,6 +23,7 @@ export async function getUserProfile(userId: string, tenantId: string) {
     avatarUrl,
     timezone: user.timezone,
     role: user.role,
+    mfaEnabled: user.mfaEnabled,
     profileSettings: parseUserProfileSettings(user.profileSettings),
   }
 }
@@ -68,6 +69,7 @@ export async function updateUserProfile(
     avatarUrl: isPersistedAssetUrl(user.avatarUrl) ? user.avatarUrl : null,
     timezone: user.timezone,
     role: user.role,
+    mfaEnabled: user.mfaEnabled,
     profileSettings: parseUserProfileSettings(user.profileSettings),
   }
 }

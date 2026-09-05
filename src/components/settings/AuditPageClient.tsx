@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { FileText, Download, Filter } from 'lucide-react'
 import { PageHeader, Button, Card, CardBody, Badge, Input } from '@/components/ui'
-import { swrFetcher } from '@/lib/api/apiClient'
+import { swrFetcher, authFetch } from '@/lib/api/apiClient'
 
 interface AuditData {
   items: Array<{
@@ -38,7 +38,7 @@ export function AuditPageClient() {
   )
 
   async function exportCsv() {
-    const res = await fetch('/api/audit/export', {
+    const res = await authFetch('/api/audit/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -1,5 +1,5 @@
 /**
- * Quick OpenRouter / Nemotron smoke test.
+ * Quick OpenRouter chat smoke test.
  * Usage: node scripts/test-openrouter.mjs
  */
 import { readFileSync, existsSync } from 'fs'
@@ -25,7 +25,7 @@ if (existsSync('.env')) {
 const key = process.env.OPENROUTER_API_KEY
 const models = (
   process.env.LLM_CHAT_MODELS ||
-  'nvidia/nemotron-3-ultra-550b-a55b,openai/gpt-oss-20b:free'
+  'openai/gpt-4o-mini,google/gemini-2.5-flash-lite'
 )
   .split(',')
   .map((m) => m.trim())
