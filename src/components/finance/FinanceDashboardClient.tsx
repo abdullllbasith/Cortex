@@ -1,20 +1,8 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  Legend,
-} from 'recharts'
 import {
   DollarSign,
   TrendingUp,
@@ -28,6 +16,22 @@ import {
 } from 'lucide-react'
 import { PageHeader, Card, CardBody, Badge, Skeleton, Button } from '@/components/ui'
 import { swrFetcher } from '@/lib/api/apiClient'
+
+const FinanceDashboardCharts = dynamic(
+  () => import('./FinanceDashboardCharts').then((m) => m.FinanceDashboardCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-6">
+        <Skeleton className="h-[320px] w-full rounded-xl" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </div>
+    ),
+  },
+)
 
 interface DashboardData {
   kpis: {
@@ -53,8 +57,6 @@ interface DashboardData {
   aiInsight: string
 }
 
-const AGING_COLORS = ['#10b981', '#f59e0b', '#f97316', '#ef4444']
-
 function formatMoney(n: number, currency = 'USD') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
 }
@@ -65,12 +67,14 @@ function KpiCard({
   icon: Icon,
   trend,
   href,
+  loading,
 }: {
   label: string
   value: string
   icon: React.ElementType
   trend?: 'up' | 'down' | 'neutral'
   href?: string
+  loading?: boolean
 }) {
   const inner = (
     <Card className={href ? 'cursor-pointer hover:border-indigo-300 transition-colors h-full' : 'h-full'}>
@@ -80,9 +84,13 @@ function KpiCard({
         </div>
         <div className="min-w-0">
           <p className="text-sm text-slate-500 truncate">{label}</p>
-          <p className="font-display text-xl font-semibold tabular-nums">{value}</p>
-          {trend === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500 mt-0.5" />}
-          {trend === 'down' && <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />}
+          {loading ? (
+            <Skeleton className="mt-1 h-7 w-24" />
+          ) : (
+            <p className="font-display text-xl font-semibold tabular-nums">{value}</p>
+          )}
+          {!loading && trend === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500 mt-0.5" />}
+          {!loading && trend === 'down' && <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />}
         </div>
       </CardBody>
     </Card>
@@ -91,61 +99,16 @@ function KpiCard({
   return inner
 }
 
-function AgingDonut({
-  title,
-  data,
-  total,
-}: {
-  title: string
-  data: Array<{ label: string; count: number; total: number }>
-  total: number
-}) {
-  const chartData = data.filter((d) => d.total > 0).map((d) => ({ name: d.label, value: d.total }))
-  const empty = chartData.length === 0
-
-  return (
-    <Card>
-      <CardBody className="p-5">
-        <h3 className="mb-1 text-sm font-semibold">{title}</h3>
-        <p className="mb-4 text-2xl font-semibold tabular-nums">{formatMoney(total)}</p>
-        {empty ? (
-          <p className="text-sm text-slate-500 py-8 text-center">No outstanding balance</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
-                {chartData.map((_, i) => (
-                  <Cell key={i} fill={AGING_COLORS[i % AGING_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        )}
-      </CardBody>
-    </Card>
-  )
-}
-
 export function FinanceDashboardClient() {
-  const { data, isLoading } = useSWR<DashboardData>('/finance/dashboard', swrFetcher)
-
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
-      </div>
-    )
-  }
+  const { data, isLoading } = useSWR<DashboardData>('/finance/dashboard', swrFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  })
 
   const kpis = data?.kpis
   const netTrend = (kpis?.netProfit ?? 0) >= 0 ? 'up' : 'down'
+  const showValues = Boolean(data)
 
   return (
     <div className="flex flex-col h-full">
@@ -173,35 +136,29 @@ export function FinanceDashboardClient() {
 
       <div className="flex-1 space-y-6 overflow-y-auto p-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <KpiCard label="Monthly Revenue" value={formatMoney(kpis?.monthlyRevenue ?? 0)} icon={DollarSign} trend="up" href="/finance/reports?report=pl" />
-          <KpiCard label="Monthly Expenses" value={formatMoney(kpis?.monthlyExpenses ?? 0)} icon={Receipt} trend="down" href="/finance/reports?report=pl" />
-          <KpiCard label="Net Profit" value={formatMoney(kpis?.netProfit ?? 0)} icon={TrendingUp} trend={netTrend} href="/finance/reports?report=pl" />
-          <KpiCard label="Cash Balance" value={formatMoney(kpis?.cashBalance ?? 0)} icon={Wallet} href="/finance/accounts" />
-          <KpiCard label="AR Outstanding" value={formatMoney(kpis?.arOutstanding ?? 0)} icon={FileText} href="/finance/invoices" />
-          <KpiCard label="AP Outstanding" value={formatMoney(kpis?.apOutstanding ?? 0)} icon={Receipt} href="/finance/reports?report=ap-aging" />
+          <KpiCard label="Monthly Revenue" value={formatMoney(kpis?.monthlyRevenue ?? 0)} icon={DollarSign} trend="up" href="/finance/reports?report=pl" loading={isLoading && !showValues} />
+          <KpiCard label="Monthly Expenses" value={formatMoney(kpis?.monthlyExpenses ?? 0)} icon={Receipt} trend="down" href="/finance/reports?report=pl" loading={isLoading && !showValues} />
+          <KpiCard label="Net Profit" value={formatMoney(kpis?.netProfit ?? 0)} icon={TrendingUp} trend={netTrend} href="/finance/reports?report=pl" loading={isLoading && !showValues} />
+          <KpiCard label="Cash Balance" value={formatMoney(kpis?.cashBalance ?? 0)} icon={Wallet} href="/finance/accounts" loading={isLoading && !showValues} />
+          <KpiCard label="AR Outstanding" value={formatMoney(kpis?.arOutstanding ?? 0)} icon={FileText} href="/finance/invoices" loading={isLoading && !showValues} />
+          <KpiCard label="AP Outstanding" value={formatMoney(kpis?.apOutstanding ?? 0)} icon={Receipt} href="/finance/reports?report=ap-aging" loading={isLoading && !showValues} />
         </div>
 
-        <Card>
-          <CardBody className="p-5">
-            <h3 className="mb-4 text-sm font-semibold">Revenue vs Expenses (12 months)</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={data?.monthlyTrend ?? []}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-                <Legend />
-                <Bar dataKey="revenue" name="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenses" name="Expenses" fill="#f97316" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardBody>
-        </Card>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <AgingDonut title="Accounts Receivable Aging" data={data?.arAging.buckets ?? []} total={data?.arAging.totalOutstanding ?? 0} />
-          <AgingDonut title="Accounts Payable Aging" data={data?.apAging.buckets ?? []} total={data?.apAging.totalOutstanding ?? 0} />
-        </div>
+        {showValues ? (
+          <FinanceDashboardCharts
+            monthlyTrend={data?.monthlyTrend ?? []}
+            arAging={data?.arAging ?? { buckets: [], totalOutstanding: 0 }}
+            apAging={data?.apAging ?? { buckets: [], totalOutstanding: 0 }}
+          />
+        ) : (
+          <div className="space-y-6">
+            <Skeleton className="h-[320px] w-full rounded-xl" />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Skeleton className="h-64 w-full rounded-xl" />
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
@@ -212,7 +169,12 @@ export function FinanceDashboardClient() {
                   <h3 className="text-sm font-semibold">Bills due in 14 days</h3>
                 </div>
               </div>
-              {!data?.upcomingBills.length ? (
+              {isLoading && !showValues ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : !data?.upcomingBills.length ? (
                 <p className="text-sm text-slate-500">No bills due in the next two weeks.</p>
               ) : (
                 <ul className="space-y-3">
@@ -239,9 +201,13 @@ export function FinanceDashboardClient() {
                 <Bot className="h-5 w-5 text-indigo-600" />
                 <h3 className="text-sm font-semibold">Finance Agent Insight</h3>
               </div>
-              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                {data?.aiInsight || 'Loading financial insights…'}
-              </p>
+              {isLoading && !showValues ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (
+                <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                  {data?.aiInsight || 'No finance insights yet — record invoices and payments to populate this view.'}
+                </p>
+              )}
               <Link href="/assistant" className="mt-4 inline-flex items-center text-sm text-indigo-600 hover:underline">
                 Ask Finance Agent <ArrowRight className="ml-1 h-4 w-4" />
               </Link>

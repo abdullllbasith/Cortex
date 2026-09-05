@@ -1,6 +1,6 @@
 import type { AccountType } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
-import { FinanceAgent } from '@/lib/agents/FinanceAgent'
 import { getApAgingReport, getUpcomingBills } from './billService'
 import { signedBalance, toNumber } from './financeTypes'
 import { GL_ACCOUNTS, resolveAccount } from './accountResolver'
@@ -22,6 +22,7 @@ function parsePeriod(startDate?: string, endDate?: string): ReportPeriod {
   return { startDate: start, endDate: end }
 }
 
+/** One accounts fetch + one grouped journal aggregate (no per-account N+1). */
 async function aggregateAccountsByType(
   tenantId: string,
   types: AccountType[],
@@ -31,23 +32,34 @@ async function aggregateAccountsByType(
   const accounts = await prisma.account.findMany({
     where: { tenantId, type: { in: types }, isActive: true },
     orderBy: { code: 'asc' },
+    select: { id: true, code: true, name: true, type: true },
   })
 
+  if (accounts.length === 0) {
+    return { rows: [] as Array<{ accountId: string; code: string; name: string; type: AccountType; amount: number }>, total: 0 }
+  }
+
+  const accountIds = accounts.map((a) => a.id)
+  const sums = await prisma.journalLine.groupBy({
+    by: ['accountId'],
+    where: {
+      accountId: { in: accountIds },
+      journalEntry: {
+        tenantId,
+        status: 'POSTED',
+        date: { gte: startDate, lte: endDate },
+      },
+    },
+    _sum: { debit: true, credit: true },
+  })
+
+  const byId = new Map(sums.map((s) => [s.accountId, s]))
   const rows: Array<{ accountId: string; code: string; name: string; type: AccountType; amount: number }> = []
   let total = 0
 
   for (const account of accounts) {
-    const agg = await prisma.journalLine.aggregate({
-      where: {
-        accountId: account.id,
-        journalEntry: {
-          tenantId,
-          status: 'POSTED',
-          date: { gte: startDate, lte: endDate },
-        },
-      },
-      _sum: { debit: true, credit: true },
-    })
+    const agg = byId.get(account.id)
+    if (!agg) continue
     const debit = toNumber(agg._sum.debit)
     const credit = toNumber(agg._sum.credit)
     if (debit === 0 && credit === 0) continue
@@ -70,13 +82,36 @@ async function aggregateAccountBalancesAsOf(tenantId: string, asOfDate: Date, ty
   const accounts = await prisma.account.findMany({
     where: { tenantId, type: { in: types }, isActive: true },
     orderBy: { code: 'asc' },
+    select: { id: true, code: true, name: true, type: true },
   })
 
+  if (accounts.length === 0) {
+    return { rows: [] as Array<{ accountId: string; code: string; name: string; type: AccountType; balance: number }>, total: 0 }
+  }
+
+  const accountIds = accounts.map((a) => a.id)
+  const sums = await prisma.journalLine.groupBy({
+    by: ['accountId'],
+    where: {
+      accountId: { in: accountIds },
+      journalEntry: {
+        tenantId,
+        status: 'POSTED',
+        date: { lte: asOfDate },
+      },
+    },
+    _sum: { debit: true, credit: true },
+  })
+
+  const byId = new Map(sums.map((s) => [s.accountId, s]))
   const rows: Array<{ accountId: string; code: string; name: string; type: AccountType; balance: number }> = []
   let total = 0
 
   for (const account of accounts) {
-    const balance = await getAccountBalance(account.id, tenantId, asOfDate)
+    const agg = byId.get(account.id)
+    const debit = toNumber(agg?._sum.debit)
+    const credit = toNumber(agg?._sum.credit)
+    const balance = signedBalance(account.type, debit, credit)
     if (Math.abs(balance) < 0.005) continue
     total += balance
     rows.push({
@@ -270,38 +305,68 @@ export async function getExpenseBreakdown(
 
 export async function getMonthlyRevenueVsExpenses(tenantId: string, months = 12) {
   const now = new Date()
-  const series: Array<{ month: string; revenue: number; expenses: number }> = []
+  const rangeStart = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1)
+  rangeStart.setHours(0, 0, 0, 0)
 
+  // Single grouped query instead of ~months × accounts aggregates.
+  const rows = await prisma.$queryRaw<
+    Array<{ month: Date; type: AccountType; debit: Prisma.Decimal | number; credit: Prisma.Decimal | number }>
+  >`
+    SELECT
+      date_trunc('month', je.date)::timestamp AS month,
+      a.type,
+      COALESCE(SUM(jl.debit), 0) AS debit,
+      COALESCE(SUM(jl.credit), 0) AS credit
+    FROM journal_lines jl
+    INNER JOIN journal_entries je ON je.id = jl."journalEntryId"
+    INNER JOIN finance_accounts a ON a.id = jl."accountId"
+    WHERE je."tenantId" = ${tenantId}
+      AND je.status = 'POSTED'
+      AND a."isActive" = true
+      AND a.type IN ('REVENUE', 'EXPENSE')
+      AND je.date >= ${rangeStart}
+    GROUP BY 1, 2
+    ORDER BY 1 ASC
+  `
+
+  const byMonth = new Map<string, { revenue: number; expenses: number }>()
   for (let i = months - 1; i >= 0; i--) {
     const start = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999)
-    const [rev, exp] = await Promise.all([
-      aggregateAccountsByType(tenantId, ['REVENUE'], start, end),
-      aggregateAccountsByType(tenantId, ['EXPENSE'], start, end),
-    ])
+    const key = `${start.getFullYear()}-${start.getMonth()}`
+    byMonth.set(key, { revenue: 0, expenses: 0 })
+  }
+
+  for (const row of rows) {
+    const monthDate = new Date(row.month)
+    const key = `${monthDate.getFullYear()}-${monthDate.getMonth()}`
+    const bucket = byMonth.get(key)
+    if (!bucket) continue
+    const amount = Math.abs(signedBalance(row.type, toNumber(row.debit), toNumber(row.credit)))
+    if (row.type === 'REVENUE') bucket.revenue += amount
+    else bucket.expenses += amount
+  }
+
+  const series: Array<{ month: string; revenue: number; expenses: number }> = []
+  for (let i = months - 1; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${start.getFullYear()}-${start.getMonth()}`
+    const bucket = byMonth.get(key) ?? { revenue: 0, expenses: 0 }
     series.push({
       month: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-      revenue: rev.total,
-      expenses: exp.total,
+      revenue: Math.round(bucket.revenue * 100) / 100,
+      expenses: Math.round(bucket.expenses * 100) / 100,
     })
   }
 
   return series
 }
 
-export async function getFinanceDashboard(tenantId: string, userId?: string) {
+export async function getFinanceDashboard(tenantId: string, _userId?: string) {
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const monthEnd = now.toISOString()
 
-  const [
-    pl,
-    arAging,
-    apAging,
-    upcomingBills,
-    monthlyTrend,
-    bankAccount,
-  ] = await Promise.all([
+  const [pl, arAging, apAging, upcomingBills, monthlyTrend, bankAccount] = await Promise.all([
     getProfitAndLoss(tenantId, monthStart, monthEnd),
     getARAgingReport(tenantId),
     getAPAgingReport(tenantId),
@@ -310,35 +375,32 @@ export async function getFinanceDashboard(tenantId: string, userId?: string) {
     resolveAccount(tenantId, GL_ACCOUNTS.BANK.subtype, [...GL_ACCOUNTS.BANK.codes]).catch(() => null),
   ])
 
-  let cashBalance = 0
-  if (bankAccount) {
-    cashBalance = await getAccountBalance(bankAccount.id, tenantId)
-  }
-
-  const agent = new FinanceAgent(tenantId, userId)
-  const [revenueInsight, expenseInsight, cashflowInsight] = await Promise.all([
-    agent.getRevenue('this month'),
-    agent.getExpenses('this month'),
-    agent.getCashflow(),
-  ])
+  const cashBalance = bankAccount
+    ? await getAccountBalance(bankAccount.id, tenantId)
+    : 0
 
   const insightParts: string[] = []
   if (pl.netIncome >= 0) {
-    insightParts.push(`Net profit this month is ${pl.netIncome.toLocaleString()} USD (${pl.changePercent >= 0 ? '+' : ''}${pl.changePercent}% vs prior period).`)
+    insightParts.push(
+      `Net profit this month is ${pl.netIncome.toLocaleString()} USD (${pl.changePercent >= 0 ? '+' : ''}${pl.changePercent}% vs prior period).`,
+    )
   } else {
-    insightParts.push(`Operating at a net loss of ${Math.abs(pl.netIncome).toLocaleString()} USD this month — review expense categories.`)
+    insightParts.push(
+      `Operating at a net loss of ${Math.abs(pl.netIncome).toLocaleString()} USD this month — review expense categories.`,
+    )
   }
   if (arAging.totalOutstanding > 0) {
-    insightParts.push(`AR outstanding: ${arAging.totalOutstanding.toLocaleString()} USD across ${arAging.buckets.reduce((s, b) => s + b.count, 0)} open invoices.`)
+    insightParts.push(
+      `AR outstanding: ${arAging.totalOutstanding.toLocaleString()} USD across ${arAging.buckets.reduce((s, b) => s + b.count, 0)} open invoices.`,
+    )
   }
   if (apAging.totalOutstanding > 0) {
-    insightParts.push(`AP outstanding: ${apAging.totalOutstanding.toLocaleString()} USD — ${upcomingBills.length} bill(s) due in the next 14 days.`)
+    insightParts.push(
+      `AP outstanding: ${apAging.totalOutstanding.toLocaleString()} USD — ${upcomingBills.length} bill(s) due in the next 14 days.`,
+    )
   }
-  if (expenseInsight.anomalies?.length) {
-    insightParts.push(String(expenseInsight.anomalies[0]?.reason ?? 'Expense anomaly detected vs prior period.'))
-  }
-  if (cashflowInsight.alerts?.length) {
-    insightParts.push(String(cashflowInsight.alerts[0]))
+  if (pl.changePercent <= -15 && pl.previousPeriod.netIncome !== 0) {
+    insightParts.push('Profitability is down sharply versus last month — check expense spikes and delayed collections.')
   }
 
   return {
@@ -355,11 +417,6 @@ export async function getFinanceDashboard(tenantId: string, userId?: string) {
     apAging,
     upcomingBills,
     aiInsight: insightParts.join(' '),
-    agentMetrics: {
-      revenue: revenueInsight,
-      expenses: expenseInsight,
-      cashflow: cashflowInsight,
-    },
   }
 }
 
