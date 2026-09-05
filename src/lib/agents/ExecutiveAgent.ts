@@ -115,12 +115,13 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
     let priorityActions: string[] = []
 
     if (isAssistantLlmAvailable() && !options?.skipLlm) {
-      const answer = await completeWithClaude({
-        systemPrompt: `You are the executive AI for ${companyName}. Be concise, numeric, and action-oriented.`,
-        messages: [
-          {
-            role: 'user',
-            content: `You are the executive AI for ${companyName}. Here is today's data:
+      try {
+        const answer = await completeWithClaude({
+          systemPrompt: `You are the executive AI for ${companyName}. Be concise, numeric, and action-oriented.`,
+          messages: [
+            {
+              role: 'user',
+              content: `You are the executive AI for ${companyName}. Here is today's data:
 
 Inventory (low stock): ${JSON.stringify(dataBlock.inventory)}
 
@@ -132,21 +133,36 @@ This month P&L: ${JSON.stringify(dataBlock.profitAndLoss)}
 
 Provide a 3-sentence executive summary and list exactly 3 priority actions as a JSON object:
 {"summary":"...","priorityActions":["action1","action2","action3"]}`,
-          },
-        ],
-        maxTokens: 1024,
-        temperature: 0.3,
-      })
+            },
+          ],
+          maxTokens: 1024,
+          temperature: 0.3,
+        })
 
-      try {
-        const parsed = JSON.parse(answer.replace(/```json\n?|\n?```/g, '').trim()) as {
-          summary?: string
-          priorityActions?: string[]
+        try {
+          const parsed = JSON.parse(answer.replace(/```json\n?|\n?```/g, '').trim()) as {
+            summary?: string
+            priorityActions?: string[]
+          }
+          executiveSummary = parsed.summary ?? answer
+          priorityActions = parsed.priorityActions ?? []
+        } catch {
+          executiveSummary = answer
+          priorityActions = this.buildDefaultPriorities(dataBlock)
         }
-        executiveSummary = parsed.summary ?? answer
-        priorityActions = parsed.priorityActions ?? []
-      } catch {
-        executiveSummary = answer
+      } catch (err) {
+        console.warn(
+          '[executive] health summary LLM failed, using deterministic summary:',
+          err instanceof Error ? err.message : err,
+        )
+        executiveSummary = [
+          `MTD net income is $${pnl.netIncome?.toLocaleString() ?? 0} (${pnl.changePercent ?? 0}% vs prior).`,
+          `Pipeline: $${pipeline.totalValue.toLocaleString()} across ${pipeline.dealCount} open deals (weighted $${pipeline.weightedValue.toLocaleString()}).`,
+          lowStock.count
+            ? `${lowStock.count} SKUs need reorder attention.`
+            : 'Inventory is within reorder thresholds.',
+          `AR outstanding: $${ar.totalOutstanding.toLocaleString()}.`,
+        ].join(' ')
         priorityActions = this.buildDefaultPriorities(dataBlock)
       }
     } else {

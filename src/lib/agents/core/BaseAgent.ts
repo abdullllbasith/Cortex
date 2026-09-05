@@ -2,6 +2,7 @@ import { completeWithClaude, isAssistantLlmAvailable } from '@/lib/assistant/cla
 import { PERMISSIONS } from '@/lib/auth/permissions'
 import { AgentToolkit, createToolkit } from './AgentToolkit'
 import { AgentMemoryStore } from './AgentMemory'
+import { resolvePlannedTool } from './resolvePlannedTool'
 import type {
   AgentAction,
   AgentResponse,
@@ -66,33 +67,79 @@ export abstract class BaseAgent<TInput = AgentTaskInput, TOutput = unknown> {
     priorActions: AgentAction[],
   ): Promise<AgentThought> {
     const context = this.buildReActContext(input, iteration, priorThoughts, priorActions)
+    const knownTools = new Set(this.tools.map((t) => t.name))
+    const fallback = () => this.heuristicThink(input, iteration)
 
     if (isAssistantLlmAvailable()) {
-      const reasoning = await completeWithClaude({
-        systemPrompt: `${this.systemPrompt}\n\nAvailable tools: ${this.tools.map((t) => t.name).join(', ')}\nRespond with JSON: {"reasoning":"...","plannedTool":"toolName or null","plannedInput":{}}`,
-        messages: [{ role: 'user', content: context }],
-        maxTokens: 1024,
-        temperature: 0.2,
-      })
-
       try {
-        const parsed = JSON.parse(reasoning.replace(/```json\n?|\n?```/g, '').trim()) as {
-          reasoning: string
-          plannedTool?: string
-          plannedInput?: Record<string, unknown>
+        const reasoning = await completeWithClaude({
+          systemPrompt: `${this.systemPrompt}
+
+Available tools (use exact names only): ${[...knownTools].join(', ')}
+Respond with JSON only: {"reasoning":"...","plannedTool":"<exactToolName>"|null,"plannedInput":{}}
+Rules:
+- plannedTool must be one of the available tool names, or JSON null when finished (never the string "null").
+- On the first iteration, prefer a concrete tool over null.`,
+          messages: [{ role: 'user', content: context }],
+          maxTokens: 1024,
+          temperature: 0.2,
+        })
+
+        try {
+          const parsed = JSON.parse(reasoning.replace(/```json\n?|\n?```/g, '').trim()) as {
+            reasoning?: string
+            plannedTool?: unknown
+            plannedInput?: Record<string, unknown>
+          }
+          const plannedTool = resolvePlannedTool(parsed.plannedTool, knownTools)
+          const reasoningText =
+            typeof parsed.reasoning === 'string' && parsed.reasoning.trim()
+              ? parsed.reasoning
+              : reasoning
+
+          // Unknown / string-"null" tool from the model: fall back on first pass, stop later.
+          if (parsed.plannedTool != null && plannedTool === undefined) {
+            if (iteration === 1) {
+              const heuristic = fallback()
+              return {
+                reasoning: `${reasoningText} (invalid tool — using ${heuristic.plannedTool ?? 'heuristic'})`,
+                plannedTool: heuristic.plannedTool,
+                plannedInput: parsed.plannedInput ?? heuristic.plannedInput,
+                iteration,
+              }
+            }
+            return { reasoning: reasoningText, iteration }
+          }
+
+          if (!plannedTool && iteration === 1) {
+            const heuristic = fallback()
+            return {
+              reasoning: reasoningText,
+              plannedTool: heuristic.plannedTool,
+              plannedInput: parsed.plannedInput ?? heuristic.plannedInput,
+              iteration,
+            }
+          }
+
+          return {
+            reasoning: reasoningText,
+            plannedTool,
+            plannedInput: parsed.plannedInput,
+            iteration,
+          }
+        } catch {
+          return iteration === 1 ? fallback() : { reasoning, iteration }
         }
-        return {
-          reasoning: parsed.reasoning,
-          plannedTool: parsed.plannedTool ?? undefined,
-          plannedInput: parsed.plannedInput,
-          iteration,
-        }
-      } catch {
-        return { reasoning, iteration }
+      } catch (err) {
+        console.warn(
+          `[${this.agentType}] think LLM failed, using heuristic:`,
+          err instanceof Error ? err.message : err,
+        )
+        return fallback()
       }
     }
 
-    return this.heuristicThink(input, iteration)
+    return fallback()
   }
 
   protected heuristicThink(input: TInput, iteration: number): AgentThought {
@@ -107,32 +154,35 @@ export abstract class BaseAgent<TInput = AgentTaskInput, TOutput = unknown> {
   }
 
   async act(thought: AgentThought): Promise<AgentAction> {
-    if (!thought.plannedTool) {
+    const knownTools = new Set(this.tools.map((t) => t.name))
+    const plannedTool = resolvePlannedTool(thought.plannedTool, knownTools)
+
+    if (!plannedTool) {
       return { tool: 'none', input: {}, success: true, result: 'No action required' }
     }
 
     const start = Date.now()
     try {
-      const result = await this.executeTool(thought.plannedTool, thought.plannedInput ?? {})
+      const result = await this.executeTool(plannedTool, thought.plannedInput ?? {})
       const action: AgentAction = {
-        tool: thought.plannedTool,
+        tool: plannedTool,
         input: thought.plannedInput ?? {},
         result,
         success: true,
         durationMs: Date.now() - start,
       }
-      await this.toolkit.logAction(thought.plannedTool, thought.plannedInput ?? {}, result)
+      await this.toolkit.logAction(plannedTool, thought.plannedInput ?? {}, result)
       return action
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Tool execution failed'
       const action: AgentAction = {
-        tool: thought.plannedTool,
+        tool: plannedTool,
         input: thought.plannedInput ?? {},
         error,
         success: false,
         durationMs: Date.now() - start,
       }
-      await this.toolkit.logAction(thought.plannedTool, thought.plannedInput ?? {}, { error }, 'FAILURE')
+      await this.toolkit.logAction(plannedTool, thought.plannedInput ?? {}, { error }, 'FAILURE')
       return action
     }
   }
@@ -146,23 +196,32 @@ export abstract class BaseAgent<TInput = AgentTaskInput, TOutput = unknown> {
 
     if (isAssistantLlmAvailable()) {
       const taskInput = input as AgentTaskInput
-      const answer = await completeWithClaude({
-        systemPrompt: this.systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: `Task: ${taskInput.task}\n\nAnalysis:\n${summary}\n\nProvide a clear, actionable response.`,
-          },
-        ],
-        maxTokens: 2048,
-      })
+      try {
+        const answer = await completeWithClaude({
+          systemPrompt: this.systemPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: `Task: ${taskInput.task}\n\nAnalysis:\n${summary}\n\nProvide a clear, actionable response.`,
+            },
+          ],
+          maxTokens: 2048,
+        })
 
-      return {
-        answer,
-        thoughts,
-        actions,
-        output: this.extractOutput(actions) as TOutput,
-        attributions: [{ agentType: this.agentType, agentId: this.agentId, summary: answer.slice(0, 200) }],
+        return {
+          answer,
+          thoughts,
+          actions,
+          output: this.extractOutput(actions) as TOutput,
+          attributions: [
+            { agentType: this.agentType, agentId: this.agentId, summary: answer.slice(0, 200) },
+          ],
+        }
+      } catch (err) {
+        console.warn(
+          `[${this.agentType}] respond LLM failed, using tool summary:`,
+          err instanceof Error ? err.message : err,
+        )
       }
     }
 
@@ -171,7 +230,9 @@ export abstract class BaseAgent<TInput = AgentTaskInput, TOutput = unknown> {
       thoughts,
       actions,
       output: this.extractOutput(actions) as TOutput,
-      attributions: [{ agentType: this.agentType, agentId: this.agentId, summary: summary.slice(0, 200) }],
+      attributions: [
+        { agentType: this.agentType, agentId: this.agentId, summary: summary.slice(0, 200) },
+      ],
     }
   }
 

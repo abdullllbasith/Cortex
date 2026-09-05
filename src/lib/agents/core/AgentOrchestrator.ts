@@ -50,11 +50,8 @@ export class AgentOrchestrator {
   }
 
   getAgent(type: AgentTypeKey, userId?: string, taskId?: string): AgentInstance {
-    const registry = this.getTenantRegistry()
-    if (!registry.has(type)) {
-      return this.registerAgent(type, userId, taskId)
-    }
-    return registry.get(type)!
+    // Fresh instance per run — avoids stale taskId and shared mutable state across requests.
+    return this.createAgent(type, userId, taskId)
   }
 
   resolveAgentType(task: string, preferred?: AgentTypeKey): AgentTypeKey {

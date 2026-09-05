@@ -16,7 +16,7 @@ export const GET = withTenantAuth(async (_request, { auth }) => {
     const [logs, processingTasks, queueStats] = await Promise.all([
       prisma.agentLog.findMany({
         where: { tenantId: auth.tenantId, createdAt: { gte: todayStart } },
-        select: { agentType: true, createdAt: true, status: true },
+        select: { agentType: true, createdAt: true, status: true, action: true, result: true },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.agentTask.findMany({
@@ -30,18 +30,29 @@ export const GET = withTenantAuth(async (_request, { auth }) => {
       const prismaType = AGENT_TYPE_MAP[type]
       const typeLogs = logs.filter((l) => l.agentType === prismaType)
       const processing = processingTasks.find((t) => t.agentType === prismaType)
+      // Ignore spurious LLM "null" tool failures that used to flip the Error badge.
+      const meaningfulLogs = typeLogs.filter((l) => {
+        if (l.status !== 'FAILURE') return true
+        if (l.action === 'null' || l.action === 'none') return false
+        const result = l.result as { error?: string } | null
+        if (typeof result?.error === 'string' && /unknown tool:\s*null/i.test(result.error)) {
+          return false
+        }
+        return true
+      })
+      const latest = meaningfulLogs[0]
 
       let status: AgentStatusInfo['status'] = 'idle'
       if (processing) status = 'processing'
-      else if (typeLogs.some((l) => l.status === 'FAILURE')) status = 'error'
-      else if (typeLogs.length > 0) status = 'active'
+      else if (latest?.status === 'FAILURE') status = 'error'
+      else if (meaningfulLogs.length > 0) status = 'active'
 
       return {
         agentType: type,
         agentId: `${type}-agent-${auth.tenantId.slice(0, 8)}`,
         status,
         tasksCompletedToday: typeLogs.filter((l) => l.status === 'SUCCESS').length,
-        lastActivityAt: typeLogs[0]?.createdAt.toISOString() ?? null,
+        lastActivityAt: (meaningfulLogs[0] ?? typeLogs[0])?.createdAt.toISOString() ?? null,
         currentTaskId: processing?.id,
       }
     })
