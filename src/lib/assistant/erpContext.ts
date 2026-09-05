@@ -122,7 +122,14 @@ export interface ERPContextBlock {
   inventory?: { lowStockCount: number; totalValue: number; pendingPOs: number }
   crm?: { openDeals: number; overdueFollowUps: number; pipelineValue: number }
   sales?: { pendingOrders: number; deliveredToday: number }
-  finance?: { outstandingAR: number; overdueInvoices: number; cashBalance: number }
+  finance?: {
+    revenueMtd: number
+    paymentCountMtd: number
+    outstandingAR: number
+    overdueInvoices: number
+    cashBalance: number
+    asOf?: string
+  }
   hr?: { onLeaveToday: number; pendingApprovals: number }
 }
 
