@@ -564,6 +564,12 @@ button:disabled {
       font-size: 16px;
       line-height: 1.25rem;
     }
+
+    /* Idle composer stays one line; JS grows height after the user types */
+    .chat-input-field:placeholder-shown {
+      height: 2.5rem !important;
+      overflow-y: hidden !important;
+    }
   }
 
   .command-palette-input,

@@ -27,8 +27,16 @@ export function ChatInput({
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
-    const maxHeight = 160
-    el.style.height = '0px'
+    const maxHeight = window.matchMedia('(max-width: 767px)').matches ? 120 : 160
+
+    // Empty field: keep a single compact line. Do not size from placeholder wrap.
+    if (!el.value) {
+      el.style.height = ''
+      el.style.overflowY = 'hidden'
+      return
+    }
+
+    el.style.height = 'auto'
     const nextHeight = Math.min(el.scrollHeight, maxHeight)
     el.style.height = `${nextHeight}px`
     el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
@@ -38,6 +46,12 @@ export function ChatInput({
     adjustHeight()
   }, [value, adjustHeight])
 
+  useEffect(() => {
+    const onResize = () => adjustHeight()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [adjustHeight])
+
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
     if (!trimmed || disabled) return
@@ -45,7 +59,7 @@ export function ChatInput({
     setValue('')
     onTyping?.(false)
     if (textareaRef.current) {
-      textareaRef.current.style.height = '0px'
+      textareaRef.current.style.height = ''
       textareaRef.current.style.overflowY = 'hidden'
     }
   }, [value, disabled, onSend, onTyping])
@@ -114,11 +128,11 @@ export function ChatInput({
   }
 
   return (
-    <div className="border-t border-slate-200 bg-white p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+    <div className="border-t border-slate-200 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:p-4 sm:pb-4">
       <div className="mx-auto w-full max-w-4xl">
         <div
           className={cn(
-            'chat-input-shell flex max-w-full items-end gap-1 overflow-hidden rounded-xl border border-slate-200 p-1.5 dark:border-slate-700',
+            'chat-input-shell flex max-w-full items-end gap-1 rounded-2xl border border-slate-200 p-1 dark:border-slate-700 sm:rounded-xl sm:p-1.5',
             'bg-slate-50 dark:bg-slate-800/60',
             'focus-within:ring-2 focus-within:ring-indigo-500/25',
             'transition-shadow',
@@ -132,9 +146,10 @@ export function ChatInput({
             disabled={disabled}
             placeholder={placeholder}
             rows={1}
+            enterKeyHint="send"
             className={cn(
-              'chat-input-field min-h-[44px] max-h-[160px] min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-3 py-2.5',
-              'text-base leading-5 text-slate-900 placeholder:text-slate-400 md:text-sm',
+              'chat-input-field min-h-10 max-h-[7.5rem] min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-3 py-2 sm:min-h-11 sm:max-h-40 sm:py-2.5',
+              'text-base leading-5 text-slate-900 placeholder:truncate placeholder:text-slate-400 md:text-sm',
               'dark:text-slate-100',
               'outline-none shadow-none ring-0',
               'focus:border-0 focus:outline-none focus:ring-0 focus:shadow-none',
@@ -143,7 +158,7 @@ export function ChatInput({
             )}
           />
 
-          <div className="flex h-10 items-center gap-0.5 shrink-0">
+          <div className="flex h-9 shrink-0 items-center gap-0.5 sm:h-10">
             <button
               type="button"
               onClick={handleFileAttach}
@@ -172,7 +187,7 @@ export function ChatInput({
           <Button
             onClick={handleSend}
             disabled={disabled || !value.trim()}
-            className="shrink-0 h-10 w-10 p-0 rounded-lg"
+            className="h-9 w-9 shrink-0 rounded-lg p-0 sm:h-10 sm:w-10"
             aria-label="Send message"
           >
             {disabled ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
