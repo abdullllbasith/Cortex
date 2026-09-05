@@ -248,7 +248,7 @@ export function MasterDashboardClient() {
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {visibility.revenue && (
           <MetricCard
-            label="Revenue today"
+            label="Revenue MTD"
             value={data?.kpis.revenueToday ?? 0}
             prefix="$"
             sparkline={spark?.revenueToday}

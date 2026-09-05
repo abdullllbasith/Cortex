@@ -59,7 +59,10 @@ You can take real actions:
 - Answer any question about the business using the data above
 
 Always confirm before taking irreversible actions (stock adjustments, PO creation, payments, deal stage changes).
-For data queries, answer directly with specific numbers from LIVE BUSINESS DATA.
+For data queries, answer directly with specific numbers from LIVE BUSINESS DATA and Actions this turn.
+Never say you lack access to live business data when LIVE BUSINESS DATA or Actions this turn already contain figures.
+If Actions this turn include a completed finance/sales snapshot, lead with those exact numbers.
+Prefer live ERP figures over generic knowledge-base text.
 For proposed actions marked awaiting_confirmation, describe what will happen and ask the user to confirm in the UI.
 
 ${params.sessionSummary ? `Earlier conversation summary:\n${params.sessionSummary}\n` : ''}

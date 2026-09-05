@@ -21,7 +21,10 @@ export async function handleFinanceAction(
   const amount = Number(classification.entities.amount ?? 0)
   const invoiceRef = String(classification.entities.invoiceNumber ?? classification.entities.invoiceId ?? '').trim()
 
-  if (/\b(revenue|collected)\b.*\b(month|this month)\b/i.test(message) || /\brevenue\s+this\s+month\b/i.test(lower)) {
+  if (
+    /\b(revenue|collected)\b/i.test(message) &&
+    /\b(month|monthly|mtd|this\s+month'?s?)\b/i.test(message)
+  ) {
     const agent = new FinanceAgent(tenantId)
     const revenue = await agent.getRevenue('month')
     return [

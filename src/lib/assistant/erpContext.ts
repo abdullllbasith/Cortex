@@ -28,7 +28,7 @@ const MODULE_KEYWORDS: Array<{ modules: ErpModule[]; pattern: RegExp }> = [
   },
   {
     modules: ['finance'],
-    pattern: /\b(invoice|payment|overdue|profit|expense|cash)\b/i,
+    pattern: /\b(invoice|payment|overdue|profit|expense|cash|revenue|ar|p\s*&\s*l|pnl)\b/i,
   },
   {
     modules: ['hr'],
@@ -234,7 +234,7 @@ export async function buildERPContext(
       (async () => {
         const finance = new FinanceAgent(tenantId)
         const now = new Date()
-        const [ar, overdueCount] = await Promise.all([
+        const [ar, overdueCount, revenueMtd] = await Promise.all([
           finance.getOutstandingAR(),
           prisma.invoice.count({
             where: {
@@ -243,6 +243,7 @@ export async function buildERPContext(
               amountDue: { gt: 0 },
             },
           }),
+          finance.getRevenue('month'),
         ])
         let cashBalance = 0
         try {
@@ -256,12 +257,15 @@ export async function buildERPContext(
           cashBalance = 0
         }
         structured.finance = {
+          revenueMtd: revenueMtd.totalRevenue,
+          paymentCountMtd: revenueMtd.paymentCount,
           outstandingAR: ar.totalOutstanding,
           overdueInvoices: overdueCount,
           cashBalance: Math.round(cashBalance * 100) / 100,
+          asOf: now.toISOString(),
         }
         lines.push(
-          `FINANCE: AR outstanding $${ar.totalOutstanding.toLocaleString()}; ${overdueCount} overdue invoice(s); cash balance $${cashBalance.toLocaleString()}.`,
+          `FINANCE: Month-to-date collected revenue $${revenueMtd.totalRevenue.toLocaleString()} (${revenueMtd.paymentCount} payment(s)); AR outstanding $${ar.totalOutstanding.toLocaleString()}; ${overdueCount} overdue invoice(s); cash balance $${cashBalance.toLocaleString()}.`,
         )
       })(),
     )

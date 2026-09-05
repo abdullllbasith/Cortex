@@ -34,13 +34,13 @@ export function MasterDashboardCharts({
         <CardBody className="p-5">
           <h3 className="mb-4 flex items-center gap-2 font-semibold">
             <DollarSign className="h-4 w-4 text-emerald-600" />
-            Revenue — last 14 days
+            Revenue — last 14 days (collected)
           </h3>
           {isLoading ? (
             <Skeleton className="h-[220px]" />
           ) : revenueChart14d.every((d) => !d.revenue) ? (
             <p className="flex h-[220px] items-center justify-center text-center text-sm text-slate-500">
-              No revenue recorded in the last 14 days
+              No collected revenue in the last 14 days
             </p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>

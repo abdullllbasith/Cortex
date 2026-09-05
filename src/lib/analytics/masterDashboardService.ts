@@ -3,7 +3,11 @@ import { prisma } from '@/lib/db/prisma'
 import { PLAN_LIMITS } from '@/lib/settings/billingService'
 import { calculatePipelineValue, getDefaultPipeline, parseStages } from '@/lib/crm/pipelineService'
 import { getLowStockSummaryForDashboard } from '@/lib/inventory/reorderService'
-import { computeSalesMetrics, computeSalesTimeseries, getRecentTransactions } from './aggregationPipeline'
+import {
+  getCollectedRevenueByDay,
+  getCollectedRevenueTotal,
+} from '@/lib/finance/collectedRevenue'
+import { getRecentTransactions } from './aggregationPipeline'
 import { resolveDateRange, fillDailyTimeseriesGaps, type DateRange } from './periodUtils'
 
 function toNumber(v: { toNumber(): number } | number | null | undefined): number {
@@ -19,6 +23,8 @@ export interface PriorityActionLink {
 export async function getMasterDashboardData(tenantId: string, userId?: string) {
   const todayRange = resolveDateRange('today')
   const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  monthStart.setHours(0, 0, 0, 0)
   const fourteenDaysAgo = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13),
   )
@@ -38,20 +44,22 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
   const dayStart = todayRange.start
 
   const [
-    todaySales,
+    collectedToday,
+    collectedMtd,
     activeOrders,
     pipeline,
     lowStock,
     arOutstanding,
     tenant,
     aiCallsToday,
-    revenue14d,
+    paymentDays,
     pipelineStages,
     overdueInvoices,
     overdueFollowUps,
     recentTransactions,
   ] = await Promise.all([
-    computeSalesMetrics(tenantId, todayRange),
+    getCollectedRevenueTotal(tenantId, todayRange.start, todayRange.end),
+    getCollectedRevenueTotal(tenantId, monthStart, rangeEnd),
     prisma.salesOrder.count({
       where: { tenantId, status: { notIn: ['DELIVERED', 'CANCELLED'] } },
     }),
@@ -67,7 +75,7 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
     }),
     prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }),
     prisma.agentLog.count({ where: { tenantId, createdAt: { gte: dayStart } } }),
-    computeSalesTimeseries(tenantId, fourteenRange, 'day'),
+    getCollectedRevenueByDay(tenantId, fourteenRange.start, fourteenRange.end),
     getPipelineByStage(tenantId),
     prisma.invoice.findMany({
       where: {
@@ -85,9 +93,10 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
   ])
 
   const aiLimit = tenant ? PLAN_LIMITS[tenant.plan].aiCalls : 500
-  const filledRevenue = fillDailyTimeseriesGaps(fourteenRange, revenue14d, (date) => ({
+  const paymentByDate = new Map(paymentDays.map((r) => [r.date, r.revenue]))
+  const filledRevenue = fillDailyTimeseriesGaps(fourteenRange, [], (date) => ({
     date,
-    revenue: 0,
+    revenue: paymentByDate.get(date) ?? 0,
     orderCount: 0,
     orders: 0,
     avgOrderValue: 0,
@@ -107,7 +116,10 @@ export async function getMasterDashboardData(tenantId: string, userId?: string) 
 
   return {
     kpis: {
-      revenueToday: Math.round(todaySales.totalRevenue * 100) / 100,
+      /** MTD collected invoice payments — aligns with Finance page monthly revenue. */
+      revenueToday: collectedMtd.total,
+      revenueMtd: collectedMtd.total,
+      revenueCollectedToday: collectedToday.total,
       activeOrders,
       pipelineValue: Math.round(pipeline.weightedValue * 100) / 100,
       lowStockItems: lowStock.count,
