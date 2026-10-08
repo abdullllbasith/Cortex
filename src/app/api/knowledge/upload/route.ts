@@ -33,7 +33,7 @@ export const POST = withTenantAuth(async (request, { auth }) => {
       return handleRouteError(new DocumentParseError('File exceeds maximum size of 10 MB'))
     }
 
-    const { title, content } = await parseKnowledgeDocument(file.name, file.type, buffer)
+    const { title, content } = await parseKnowledgeDocument(file.name, resolvedMime, buffer)
 
     const record = await knowledgeRepository.createKnowledge(
       auth.tenantId,
@@ -44,7 +44,7 @@ export const POST = withTenantAuth(async (request, { auth }) => {
         metadata: {
           fileName: file.name,
           fileSize: file.size,
-          mimeType: file.type || null,
+          mimeType: resolvedMime || file.type || null,
           uploadedAt: new Date().toISOString(),
         },
       },

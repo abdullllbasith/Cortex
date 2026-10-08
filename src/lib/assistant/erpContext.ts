@@ -10,6 +10,11 @@ import { OperationsAgent } from '@/lib/agents/OperationsAgent'
 import { GL_ACCOUNTS, resolveAccount } from '@/lib/finance/accountResolver'
 import { getAccountBalance } from '@/lib/finance/journalEngine'
 import { getLowStockSummaryForDashboard } from '@/lib/inventory/reorderService'
+import {
+  filterErpModulesByPermissions,
+  filterKnowledgeByPermissions,
+  permissionFingerprint,
+} from '@/lib/auth/aiAccess'
 
 export type ErpModule = 'inventory' | 'crm' | 'sales' | 'finance' | 'hr'
 
@@ -69,33 +74,45 @@ export async function searchErpKnowledge(
   query: string,
   modules: ErpModule[],
   topK = 5,
+  permissions: string[] = ['*'],
 ): Promise<SemanticSearchResult[]> {
   if (!query.trim()) return []
 
+  const allowedModules = filterErpModulesByPermissions(modules, permissions)
+
   try {
-    const entityType = semanticEntityTypeForModules(modules)
+    // When the user asked about a denied module only, never fall back to entityType "all"
+    // (that can return customer rows to roles without CRM_VIEW).
+    const entityType =
+      modules.length > 0 && allowedModules.length === 0
+        ? 'knowledge'
+        : semanticEntityTypeForModules(allowedModules)
+
     const embedding = await generateEmbedding(query)
     const vectorLiteral = toVectorLiteral(embedding)
 
+    let results: SemanticSearchResult[]
     if (entityType === 'all') {
-      return semanticSearchWithVector(tenantId, vectorLiteral, 'all', topK)
-    }
+      results = await semanticSearchWithVector(tenantId, vectorLiteral, 'all', topK)
+    } else {
+      const [primary, secondary] = await Promise.all([
+        semanticSearchWithVector(tenantId, vectorLiteral, entityType, topK),
+        semanticSearchWithVector(tenantId, vectorLiteral, 'knowledge', Math.min(4, topK)),
+      ])
 
-    const [primary, secondary] = await Promise.all([
-      semanticSearchWithVector(tenantId, vectorLiteral, entityType, topK),
-      semanticSearchWithVector(tenantId, vectorLiteral, 'knowledge', Math.min(4, topK)),
-    ])
-
-    const seen = new Set(primary.map((r) => `${r.entityType}:${r.id}`))
-    const merged = [...primary]
-    for (const row of secondary) {
-      const key = `${row.entityType}:${row.id}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        merged.push(row)
+      const seen = new Set(primary.map((r) => `${r.entityType}:${r.id}`))
+      const merged = [...primary]
+      for (const row of secondary) {
+        const key = `${row.entityType}:${row.id}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          merged.push(row)
+        }
       }
+      results = merged.sort((a, b) => b.similarity - a.similarity).slice(0, topK)
     }
-    return merged.sort((a, b) => b.similarity - a.similarity).slice(0, topK)
+
+    return filterKnowledgeByPermissions(results, permissions)
   } catch (err) {
     // Chat LLMs (OpenRouter) are separate from OpenAI embeddings used for RAG.
     // Don't fail the whole assistant if embedding credits/quota are exhausted.
@@ -136,15 +153,18 @@ export interface ERPContextBlock {
 export async function buildERPContext(
   tenantId: string,
   modules: ErpModule[],
+  permissions: string[] = ['*'],
 ): Promise<{ structured: ERPContextBlock; formatted: string }> {
-  if (modules.length === 0) {
+  const allowedModules = filterErpModulesByPermissions(modules, permissions)
+
+  if (allowedModules.length === 0) {
     return {
       structured: {},
       formatted: 'No module-specific live data loaded for this query.',
     }
   }
 
-  const cacheKey = `${tenantId}:${[...modules].sort().join(',')}`
+  const cacheKey = `${tenantId}:${permissionFingerprint(permissions)}:${[...allowedModules].sort().join(',')}`
   const cached = erpContextCache.get(cacheKey)
   if (cached && Date.now() - cached.at < ERP_CONTEXT_CACHE_MS) {
     return cached.data
@@ -155,7 +175,7 @@ export async function buildERPContext(
 
   const tasks: Promise<void>[] = []
 
-  if (modules.includes('inventory')) {
+  if (allowedModules.includes('inventory')) {
     tasks.push(
       (async () => {
         const [lowStock, pendingPOs] = await Promise.all([
@@ -185,7 +205,7 @@ export async function buildERPContext(
     )
   }
 
-  if (modules.includes('crm')) {
+  if (allowedModules.includes('crm')) {
     tasks.push(
       (async () => {
         const sales = new SalesAgent(tenantId)
@@ -206,7 +226,7 @@ export async function buildERPContext(
     )
   }
 
-  if (modules.includes('sales')) {
+  if (allowedModules.includes('sales')) {
     tasks.push(
       (async () => {
         const startOfDay = new Date()
@@ -236,7 +256,7 @@ export async function buildERPContext(
     )
   }
 
-  if (modules.includes('finance')) {
+  if (allowedModules.includes('finance')) {
     tasks.push(
       (async () => {
         const finance = new FinanceAgent(tenantId)
@@ -278,7 +298,7 @@ export async function buildERPContext(
     )
   }
 
-  if (modules.includes('hr')) {
+  if (allowedModules.includes('hr')) {
     tasks.push(
       (async () => {
         const ops = new OperationsAgent(tenantId)
@@ -320,7 +340,11 @@ export async function buildERPContext(
 }
 
 /** Format live ERP context for the system prompt. */
-export async function fetchErpLiveContext(tenantId: string, modules: ErpModule[]): Promise<string> {
-  const { structured, formatted } = await buildERPContext(tenantId, modules)
+export async function fetchErpLiveContext(
+  tenantId: string,
+  modules: ErpModule[],
+  permissions: string[] = ['*'],
+): Promise<string> {
+  const { structured, formatted } = await buildERPContext(tenantId, modules, permissions)
   return `${formatted}\n\nStructured snapshot:\n${JSON.stringify(structured, null, 2)}`
 }

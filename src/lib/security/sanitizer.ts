@@ -47,7 +47,20 @@ const ALLOWED_MIME = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ])
 
+/** Normalize browser/OS MIME quirks before allow-list checks. */
+const MIME_NORMALIZE: Record<string, string> = {
+  'application/csv': 'text/csv',
+  'text/x-csv': 'text/csv',
+  'application/x-csv': 'text/csv',
+  'application/vnd.ms-excel': 'text/csv',
+}
+
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
+
+export function normalizeUploadMimeType(mimeType: string): string {
+  const base = (mimeType || '').split(';')[0]?.trim().toLowerCase() ?? ''
+  return MIME_NORMALIZE[base] ?? base
+}
 
 export async function validateUploadedFile(file: {
   mimeType: string
@@ -57,8 +70,9 @@ export async function validateUploadedFile(file: {
   if (file.size > MAX_UPLOAD_BYTES) {
     return { valid: false, error: 'File exceeds maximum size of 10 MB' }
   }
-  if (!ALLOWED_MIME.has(file.mimeType)) {
-    return { valid: false, error: 'File type not allowed' }
+  const mime = normalizeUploadMimeType(file.mimeType)
+  if (!ALLOWED_MIME.has(mime)) {
+    return { valid: false, error: 'File type not allowed. Use PDF, DOCX, CSV, or TXT.' }
   }
   // ClamAV integration point — scan file.buffer when virus scanning is enabled
   if (process.env.CLAMAV_ENABLED === 'true' && file.buffer) {

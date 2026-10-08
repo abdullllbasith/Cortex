@@ -12,15 +12,44 @@ const EXTENSION_MIME: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }
 
+/** Browser / OS MIME aliases → canonical types we accept for knowledge uploads. */
+const MIME_ALIASES: Record<string, string> = {
+  'application/csv': 'text/csv',
+  'text/x-csv': 'text/csv',
+  'application/x-csv': 'text/csv',
+  'application/vnd.ms-excel': 'text/csv', // Windows often tags .csv this way
+}
+
+export const KNOWLEDGE_UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.csv', '.txt'] as const
+
 export function resolveKnowledgeMimeType(fileName: string, mimeType: string): string {
-  if (mimeType && mimeType !== 'application/octet-stream') return mimeType
+  const normalizedInput = (mimeType || '').split(';')[0]?.trim().toLowerCase() ?? ''
+  const aliased = MIME_ALIASES[normalizedInput] ?? normalizedInput
+  if (aliased && aliased !== 'application/octet-stream') return aliased
+
   const ext = fileName.split('.').pop()?.toLowerCase()
-  return ext ? EXTENSION_MIME[ext] ?? mimeType : mimeType
+  return ext ? EXTENSION_MIME[ext] ?? aliased : aliased
+}
+
+export function isSupportedKnowledgeUpload(fileName: string, mimeType = ''): boolean {
+  const resolved = resolveKnowledgeMimeType(fileName, mimeType)
+  return (
+    resolved === 'application/pdf'
+    || resolved === 'text/csv'
+    || resolved === 'text/plain'
+    || resolved === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || KNOWLEDGE_UPLOAD_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext))
+  )
 }
 
 function toFriendlyPdfError(err: unknown): DocumentParseError {
   const message = err instanceof Error ? err.message : 'Failed to parse PDF'
 
+  if (/Cannot find module ['"]pdf-parse\/worker['"]/i.test(message)) {
+    return new DocumentParseError(
+      'PDF support is not installed correctly on the server. Ask an admin to reinstall dependencies (pdf-parse@2).',
+    )
+  }
   if (/Object\.defineProperty called on non-object/i.test(message)) {
     return new DocumentParseError(
       'Could not read this PDF in the server runtime. Try restarting the dev server, or upload a text-based PDF / TXT.',
@@ -67,6 +96,20 @@ function parsePlainText(buffer: Buffer): string {
   return buffer.toString('utf8')
 }
 
+async function parseDocx(buffer: Buffer): Promise<string> {
+  try {
+    const mammoth = await import('mammoth')
+    const result = await mammoth.extractRawText({ buffer })
+    return result.value ?? ''
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to parse DOCX'
+    if (message.length <= 160 && !/__TURBOPACK__|node_modules/i.test(message)) {
+      throw new DocumentParseError(message)
+    }
+    throw new DocumentParseError('Could not extract text from this Word document. Try exporting as TXT or PDF.')
+  }
+}
+
 export async function parseKnowledgeDocument(
   fileName: string,
   mimeType: string,
@@ -74,28 +117,27 @@ export async function parseKnowledgeDocument(
 ): Promise<{ title: string; content: string }> {
   const resolvedMime = resolveKnowledgeMimeType(fileName, mimeType)
   const title = fileName.replace(/\.[^.]+$/, '')
+  const lowerName = fileName.toLowerCase()
 
   let raw = ''
 
-  if (resolvedMime === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf')) {
+  if (resolvedMime === 'application/pdf' || lowerName.endsWith('.pdf')) {
     raw = await parsePdf(buffer)
   } else if (
     resolvedMime === 'text/plain'
     || resolvedMime === 'text/csv'
-    || fileName.toLowerCase().endsWith('.txt')
-    || fileName.toLowerCase().endsWith('.csv')
+    || lowerName.endsWith('.txt')
+    || lowerName.endsWith('.csv')
   ) {
     raw = parsePlainText(buffer)
   } else if (
     resolvedMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    || fileName.toLowerCase().endsWith('.docx')
+    || lowerName.endsWith('.docx')
   ) {
-    throw new DocumentParseError(
-      'DOCX is not supported yet. Please upload PDF, CSV, or TXT.',
-    )
+    raw = await parseDocx(buffer)
   } else {
     throw new DocumentParseError(
-      'Unsupported file type. Please upload PDF, CSV, or TXT.',
+      'Unsupported file type. Please upload PDF, DOCX, CSV, or TXT.',
     )
   }
 
@@ -103,7 +145,7 @@ export async function parseKnowledgeDocument(
 
   if (!content) {
     throw new DocumentParseError(
-      'No readable text found in this file. Try a text-based PDF or export as TXT.',
+      'No readable text found in this file. Try a text-based PDF/DOCX or export as TXT.',
     )
   }
 

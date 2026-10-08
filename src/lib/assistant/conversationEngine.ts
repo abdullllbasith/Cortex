@@ -1,4 +1,8 @@
 import { prisma } from '@/lib/db/prisma'
+import {
+  deniedErpModules,
+  filterErpModulesByPermissions,
+} from '@/lib/auth/aiAccess'
 import { classifyIntent, isLightweightAssistantMessage } from './intentClassifier'
 import { routeActionHandler } from './actionHandlers'
 import {
@@ -29,6 +33,7 @@ function buildSystemPrompt(params: {
   knowledgeContext: string
   actionsSummary?: string
   sessionSummary?: string
+  deniedModules?: string[]
 }): string {
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -39,24 +44,28 @@ function buildSystemPrompt(params: {
   const permissionList = params.permissions.includes('*')
     ? 'Full access'
     : params.permissions.join(', ') || 'Standard user'
+  const deniedBlock =
+    params.deniedModules && params.deniedModules.length > 0
+      ? `\nACCESS RESTRICTIONS (hard RBAC — do not invent or infer this data):\nThe user asked about module(s) they cannot access: ${params.deniedModules.join(', ')}.\nIf they ask for that data, clearly say they do not have permission. Never invent customer, CRM, sales, inventory, finance, or HR details for denied modules.\n`
+      : ''
 
   return `You are Cortex, the AI operating system for ${params.tenantName ?? 'this organization'}.
 Today is ${today}. The current user is ${params.userName ?? 'a team member'} (${params.userRole ?? 'user'}).
 Permissions: ${permissionList}
-
+${deniedBlock}
 LIVE BUSINESS DATA:
 ${params.erpContextFormatted || 'No live module data loaded for this message.'}
 
 RELEVANT KNOWLEDGE:
 ${params.knowledgeContext || 'No relevant knowledge retrieved.'}
 
-You can take real actions:
-- View and update inventory, stock, and products
-- Create and manage purchase orders
-- View and manage customers, deals, and activities
-- Create quotes and orders
-- Create invoices and record payments
-- Answer any question about the business using the data above
+RBAC RULES (mandatory):
+- Only answer from LIVE BUSINESS DATA, RELEVANT KNOWLEDGE, and Actions this turn.
+- Never reveal customers, contacts, deals, inventory, finance, or HR details that are not present above.
+- If a module is missing from LIVE BUSINESS DATA because of permissions, say the user lacks access — do not guess.
+- You may only propose actions for modules included in the user's permissions.
+
+Within allowed modules you can take real actions such as viewing stock, creating POs, managing CRM (if permitted), quotes/orders, invoices/payments.
 
 Always confirm before taking irreversible actions (stock adjustments, PO creation, payments, deal stage changes).
 For data queries, answer directly with specific numbers from LIVE BUSINESS DATA and Actions this turn.
@@ -212,7 +221,9 @@ async function prepareEngineContext(
   } = input
 
   const classification = classifyIntent(userMessage)
-  const modules = detectModuleContext(userMessage)
+  const detectedModules = detectModuleContext(userMessage)
+  const modules = filterErpModulesByPermissions(detectedModules, permissions)
+  const deniedModules = deniedErpModules(detectedModules, permissions)
   const skipHeavyContext = isLightweightAssistantMessage(userMessage, classification)
 
   const emptyErp = {
@@ -223,15 +234,15 @@ async function prepareEngineContext(
   const [sourcesUsed, tenantName, userName, erpBuilt, actionsTaken] = await Promise.all([
     skipHeavyContext
       ? Promise.resolve([] as Awaited<ReturnType<typeof searchErpKnowledge>>)
-      : searchErpKnowledge(tenantId, userMessage, modules, 5),
+      : searchErpKnowledge(tenantId, userMessage, detectedModules, 5, permissions),
     inputTenantName ? Promise.resolve(inputTenantName) : resolveTenantName(tenantId),
     inputUserName ? Promise.resolve(inputUserName) : resolveUserName(userId),
     skipHeavyContext || modules.length === 0
       ? Promise.resolve(emptyErp)
-      : buildERPContext(tenantId, modules),
+      : buildERPContext(tenantId, modules, permissions),
     skipHeavyContext
       ? Promise.resolve([] as ConversationEngineResult['actionsTaken'])
-      : routeActionHandler(tenantId, userId, userMessage, classification),
+      : routeActionHandler(tenantId, userId, userMessage, classification, permissions),
   ])
 
   const knowledgeContext = formatKnowledgeContext(sourcesUsed)
@@ -253,6 +264,7 @@ async function prepareEngineContext(
     knowledgeContext,
     actionsSummary,
     sessionSummary,
+    deniedModules,
   })
 
   const messages: ConversationTurn[] = [

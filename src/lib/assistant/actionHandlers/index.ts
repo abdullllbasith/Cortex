@@ -1,3 +1,5 @@
+import { PERMISSIONS } from '@/lib/auth/permissions'
+import { accessDeniedAction, hasAiPermission } from '@/lib/auth/aiAccess'
 import type { IntentClassification } from '../types'
 import { handleSalesAction, undoSalesAction } from './salesAction'
 import { handleInventoryAction, undoInventoryAction } from './inventoryAction'
@@ -11,6 +13,7 @@ export async function routeActionHandler(
   userId: string,
   message: string,
   classification: IntentClassification,
+  permissions: string[] = ['*'],
 ): Promise<ActionTaken[]> {
   const lower = message.toLowerCase()
 
@@ -20,31 +23,66 @@ export async function routeActionHandler(
       classification.handler === 'sales' ||
       !classification.handler)
   ) {
+    if (!hasAiPermission(permissions, PERMISSIONS.CRM_VIEW)) {
+      return [accessDeniedAction('CRM / customer')]
+    }
     const crm = await handleCrmAction(tenantId, userId, message, classification)
     if (crm.length) return crm
   }
 
   switch (classification.handler) {
     case 'inventory':
+      if (!hasAiPermission(permissions, PERMISSIONS.INVENTORY_VIEW)) {
+        return [accessDeniedAction('inventory')]
+      }
       return handleInventoryAction(tenantId, userId, message, classification)
     case 'sales':
+      if (
+        !hasAiPermission(permissions, PERMISSIONS.SALES_VIEW) &&
+        !hasAiPermission(permissions, PERMISSIONS.CRM_VIEW)
+      ) {
+        return [accessDeniedAction('sales')]
+      }
       return handleSalesAction(tenantId, userId, message, classification)
     case 'finance':
+      if (!hasAiPermission(permissions, PERMISSIONS.FINANCE_VIEW)) {
+        return [accessDeniedAction('finance')]
+      }
       return handleFinanceAction(tenantId, userId, message, classification)
     case 'hr':
+      if (!hasAiPermission(permissions, PERMISSIONS.HR_VIEW)) {
+        return [accessDeniedAction('HR')]
+      }
       return handleHrAction(tenantId, userId, message, classification)
     case 'crm':
+      if (!hasAiPermission(permissions, PERMISSIONS.CRM_VIEW)) {
+        return [accessDeniedAction('CRM / customer')]
+      }
       return handleCrmAction(tenantId, userId, message, classification)
     default:
       if (classification.intent === 'REPORT') {
-        const finance = await handleFinanceAction(tenantId, userId, message, classification)
-        if (finance.length) return finance
-        return handleSalesAction(tenantId, userId, message, classification)
+        if (hasAiPermission(permissions, PERMISSIONS.FINANCE_VIEW)) {
+          const finance = await handleFinanceAction(tenantId, userId, message, classification)
+          if (finance.length) return finance
+        }
+        if (
+          hasAiPermission(permissions, PERMISSIONS.SALES_VIEW) ||
+          hasAiPermission(permissions, PERMISSIONS.CRM_VIEW)
+        ) {
+          return handleSalesAction(tenantId, userId, message, classification)
+        }
+        return [accessDeniedAction('reports')]
       }
       if (/\b(invoice|payment|overdue|profit|revenue|ar)\b/i.test(lower)) {
+        if (!hasAiPermission(permissions, PERMISSIONS.FINANCE_VIEW)) {
+          return [accessDeniedAction('finance')]
+        }
         return handleFinanceAction(tenantId, userId, message, classification)
       }
       if (/\b(stock|inventory|warehouse|reorder|po)\b/i.test(lower)) {
+        if (!hasAiPermission(permissions, PERMISSIONS.INVENTORY_VIEW)) {
+          return [accessDeniedAction('inventory')]
+        }
         return handleInventoryAction(tenantId, userId, message, classification)
       }
       if (classification.intent === 'AUTOMATION') {

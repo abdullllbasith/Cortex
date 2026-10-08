@@ -1,5 +1,7 @@
 import { InvoiceStatus } from '@prisma/client'
 import { completeWithClaude, isAssistantLlmAvailable } from '@/lib/assistant/claudeClient'
+import { canUseAgentType, hasAiPermission } from '@/lib/auth/aiAccess'
+import { PERMISSIONS } from '@/lib/auth/permissions'
 import { prisma } from '@/lib/db/prisma'
 import { BaseAgent } from './core/BaseAgent'
 import { FinanceAgent } from './FinanceAgent'
@@ -76,7 +78,13 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
   }
 
   async getBusinessHealthSummary(options?: { skipLlm?: boolean }) {
-    this.involvedAgents.push('finance', 'inventory', 'sales')
+    const canInventory = hasAiPermission(this.permissions, PERMISSIONS.INVENTORY_VIEW)
+    const canCrm = hasAiPermission(this.permissions, PERMISSIONS.CRM_VIEW)
+    const canFinance = hasAiPermission(this.permissions, PERMISSIONS.FINANCE_VIEW)
+
+    if (canInventory) this.involvedAgents.push('inventory')
+    if (canCrm) this.involvedAgents.push('sales')
+    if (canFinance) this.involvedAgents.push('finance')
 
     const tenant = await prisma.tenant.findUnique({
       where: { id: this.tenantId },
@@ -84,15 +92,36 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
     })
     const companyName = tenant?.name ?? 'Your company'
 
-    const inventory = new InventoryAgent(this.tenantId, undefined, this.taskIdRef)
-    const sales = new SalesAgent(this.tenantId, undefined, this.taskIdRef)
-    const finance = new FinanceAgent(this.tenantId, undefined, this.taskIdRef)
+    const inventory = canInventory
+      ? new InventoryAgent(this.tenantId, undefined, this.taskIdRef)
+      : null
+    const sales = canCrm ? new SalesAgent(this.tenantId, undefined, this.taskIdRef) : null
+    const finance = canFinance
+      ? new FinanceAgent(this.tenantId, undefined, this.taskIdRef)
+      : null
+
+    if (inventory) inventory.setPermissions(this.permissions)
+    if (sales) sales.setPermissions(this.permissions)
+    if (finance) finance.setPermissions(this.permissions)
+
+    const emptyLowStock = {
+      count: 0,
+      items: [] as Array<{ urgency: string }>,
+    }
+    const emptyPipeline = {
+      totalValue: 0,
+      weightedValue: 0,
+      dealCount: 0,
+      dealsByStage: {} as Record<string, unknown>,
+    }
+    const emptyAr = { totalOutstanding: 0 }
+    const emptyPnl = { netIncome: 0, changePercent: 0, revenueTotal: 0 }
 
     const [lowStock, pipeline, ar, pnl] = await Promise.all([
-      inventory.getLowStockItems(),
-      sales.getPipelineValue(),
-      finance.getOutstandingAR(),
-      finance.getProfitAndLoss('month'),
+      inventory ? inventory.getLowStockItems() : Promise.resolve(emptyLowStock),
+      sales ? sales.getPipelineValue() : Promise.resolve(emptyPipeline),
+      finance ? finance.getOutstandingAR() : Promise.resolve(emptyAr),
+      finance ? finance.getProfitAndLoss('month') : Promise.resolve(emptyPnl),
     ])
 
     const dataBlock = {
@@ -100,15 +129,17 @@ Synthesize finance, sales, inventory, and HR data into board-level recommendatio
         lowStockCount: lowStock.count,
         criticalItems: lowStock.items.filter((i) => i.urgency === 'critical').slice(0, 8),
         warningItems: lowStock.items.filter((i) => i.urgency === 'warning').slice(0, 5),
+        accessDenied: !canInventory,
       },
       pipeline: {
         totalValue: pipeline.totalValue,
         weightedValue: pipeline.weightedValue,
         dealCount: pipeline.dealCount,
         dealsByStage: pipeline.dealsByStage,
+        accessDenied: !canCrm,
       },
-      outstandingAR: ar,
-      profitAndLoss: pnl,
+      outstandingAR: { ...ar, accessDenied: !canFinance },
+      profitAndLoss: { ...pnl, accessDenied: !canFinance },
     }
 
     let executiveSummary = ''
@@ -230,42 +261,66 @@ Provide a 3-sentence executive summary and list exactly 3 priority actions as a 
 
   async getDailyBriefing(options?: { skipLlm?: boolean }) {
     const health = await this.getBusinessHealthSummary(options)
-    this.involvedAgents.push('sales', 'operations', 'finance')
+    const canCrm = hasAiPermission(this.permissions, PERMISSIONS.CRM_VIEW)
+    const canFinance = hasAiPermission(this.permissions, PERMISSIONS.FINANCE_VIEW)
+    const canSales = hasAiPermission(this.permissions, PERMISSIONS.SALES_VIEW)
+    const canHr = hasAiPermission(this.permissions, PERMISSIONS.HR_VIEW)
 
-    const sales = new SalesAgent(this.tenantId, undefined, this.taskIdRef)
-    const operations = new OperationsAgent(this.tenantId, undefined, this.taskIdRef)
+    if (canCrm) this.involvedAgents.push('sales')
+    if (canHr) this.involvedAgents.push('operations')
+    if (canFinance) this.involvedAgents.push('finance')
+
+    const sales = canCrm ? new SalesAgent(this.tenantId, undefined, this.taskIdRef) : null
+    const operations = canHr
+      ? new OperationsAgent(this.tenantId, undefined, this.taskIdRef)
+      : null
+    if (sales) sales.setPermissions(this.permissions)
+    if (operations) operations.setPermissions(this.permissions)
 
     const now = new Date()
+    const emptyFollowUps = {
+      activityCount: 0,
+      contactFollowUpCount: 0,
+      activities: [] as unknown[],
+    }
+    const emptyLeave = { count: 0, requests: [] as unknown[] }
+
     const [overdueInvoices, overdueFollowUps, upcomingDeliveries, pendingLeave] =
       await Promise.all([
-        prisma.invoice.findMany({
-          where: {
-            tenantId: this.tenantId,
-            status: { in: [InvoiceStatus.OVERDUE, InvoiceStatus.SENT, InvoiceStatus.PARTIAL] },
-            dueDate: { lt: now },
-            amountDue: { gt: 0 },
-          },
-          select: { id: true, invoiceNumber: true, amountDue: true, dueDate: true },
-          take: 20,
-        }),
-        sales.getOverdueFollowUps(),
-        prisma.salesOrder.findMany({
-          where: {
-            tenantId: this.tenantId,
-            status: { in: ['PACKED', 'SHIPPED', 'CONFIRMED', 'PROCESSING'] },
-          },
-          select: {
-            id: true,
-            orderNumber: true,
-            status: true,
-            confirmedAt: true,
-            total: true,
-            contact: { select: { firstName: true, lastName: true } },
-          },
-          orderBy: { updatedAt: 'asc' },
-          take: 15,
-        }),
-        operations.getPendingLeaveRequests(),
+        canFinance
+          ? prisma.invoice.findMany({
+              where: {
+                tenantId: this.tenantId,
+                status: {
+                  in: [InvoiceStatus.OVERDUE, InvoiceStatus.SENT, InvoiceStatus.PARTIAL],
+                },
+                dueDate: { lt: now },
+                amountDue: { gt: 0 },
+              },
+              select: { id: true, invoiceNumber: true, amountDue: true, dueDate: true },
+              take: 20,
+            })
+          : Promise.resolve([]),
+        sales ? sales.getOverdueFollowUps() : Promise.resolve(emptyFollowUps),
+        canSales || canCrm
+          ? prisma.salesOrder.findMany({
+              where: {
+                tenantId: this.tenantId,
+                status: { in: ['PACKED', 'SHIPPED', 'CONFIRMED', 'PROCESSING'] },
+              },
+              select: {
+                id: true,
+                orderNumber: true,
+                status: true,
+                confirmedAt: true,
+                total: true,
+                contact: { select: { firstName: true, lastName: true } },
+              },
+              orderBy: { updatedAt: 'asc' },
+              take: 15,
+            })
+          : Promise.resolve([]),
+        operations ? operations.getPendingLeaveRequests() : Promise.resolve(emptyLeave),
       ])
 
     const overdueInvoiceValue = overdueInvoices.reduce(
@@ -335,6 +390,16 @@ Provide a 3-sentence executive summary and list exactly 3 priority actions as a 
 
   async delegateToAgent(agentType: string, task: string): Promise<AgentResponse> {
     const type = agentType as AgentTypeKey
+
+    if (!canUseAgentType(this.permissions, type)) {
+      return {
+        answer: `Access denied: you do not have permission to use the ${type} agent.`,
+        thoughts: [],
+        actions: [],
+        metadata: { involvedAgents: [], accessDenied: true },
+      }
+    }
+
     this.involvedAgents.push(type)
 
     this.stepCallback?.({

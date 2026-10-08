@@ -1,5 +1,9 @@
 import { FinancePaymentMethod } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import {
+  hasAiPermission,
+  permissionForAssistantActionType,
+} from '@/lib/auth/aiAccess'
 import { createPO } from '@/lib/inventory/purchaseOrderService'
 import { generateReorderSuggestions } from '@/lib/inventory/reorderService'
 import { getStockBalance, recordTransaction } from '@/lib/inventory/stockEngine'
@@ -14,9 +18,21 @@ export async function executeConfirmedAction(
   tenantId: string,
   userId: string,
   action: ActionTaken,
+  permissions: string[] = ['*'],
 ): Promise<ActionTaken> {
   const payload = action.executePayload ?? {}
   const type = action.type
+
+  const required = permissionForAssistantActionType(type)
+  if (required && !hasAiPermission(permissions, required)) {
+    return {
+      ...action,
+      status: 'failed',
+      requiresConfirmation: false,
+      resultMessage: `Access denied: missing permission ${required}`,
+      description: `Access denied for action ${type}`,
+    }
+  }
 
   try {
     switch (type) {

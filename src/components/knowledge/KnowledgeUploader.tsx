@@ -9,6 +9,18 @@ import { ApiError } from '@/lib/api/types'
 import toast from 'react-hot-toast'
 
 const ACCEPTED = '.pdf,.docx,.csv,.txt'
+const ACCEPTED_LABEL = 'PDF, DOCX, CSV, TXT'
+const MAX_CLIENT_BYTES = 10 * 1024 * 1024
+
+function isAcceptedFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  return (
+    name.endsWith('.pdf')
+    || name.endsWith('.docx')
+    || name.endsWith('.csv')
+    || name.endsWith('.txt')
+  )
+}
 
 function formatUploadError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -16,11 +28,12 @@ function formatUploadError(err: unknown): string {
     if (
       err.code === 'PARSE_ERROR'
       || err.code === 'VALIDATION_ERROR'
+      || err.code === 'FORBIDDEN'
       || (msg.length <= 160 && !/prisma|turbopack|connectorerror/i.test(msg))
     ) {
       return msg
     }
-    return 'Upload failed. Please use PDF, CSV, or TXT and try again.'
+    return `Upload failed. Please use ${ACCEPTED_LABEL} and try again.`
   }
   if (err instanceof Error && err.message.length <= 160) {
     return err.message
@@ -43,6 +56,13 @@ export function KnowledgeUploader({ onUploaded, className }: KnowledgeUploaderPr
     setError(null)
 
     try {
+      if (!isAcceptedFile(file)) {
+        throw new Error(`Unsupported file type. Please upload ${ACCEPTED_LABEL}.`)
+      }
+      if (file.size > MAX_CLIENT_BYTES) {
+        throw new Error('File exceeds maximum size of 10 MB')
+      }
+
       const formData = new FormData()
       formData.append('file', file)
 
@@ -88,7 +108,7 @@ export function KnowledgeUploader({ onUploaded, className }: KnowledgeUploaderPr
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Drag & drop files here
             </p>
-            <p className="mt-1 text-xs text-slate-400">PDF, DOCX, CSV, TXT</p>
+            <p className="mt-1 text-xs text-slate-400">{ACCEPTED_LABEL}</p>
             <label className="mt-4 cursor-pointer rounded-md bg-indigo-600 px-4 py-2 text-xs font-medium text-white hover:bg-indigo-700">
               Browse files
               <input
@@ -98,6 +118,7 @@ export function KnowledgeUploader({ onUploaded, className }: KnowledgeUploaderPr
                 onChange={(e) => {
                   const file = e.target.files?.[0]
                   if (file) void uploadFile(file)
+                  e.target.value = ''
                 }}
               />
             </label>

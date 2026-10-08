@@ -1,5 +1,8 @@
 import { completeWithClaude, isAssistantLlmAvailable } from '@/lib/assistant/claudeClient'
-import { PERMISSIONS } from '@/lib/auth/permissions'
+import {
+  AGENT_TYPE_REQUIRED_PERMISSIONS,
+  hasAllAiPermissions,
+} from '@/lib/auth/aiAccess'
 import { AgentToolkit, createToolkit } from './AgentToolkit'
 import { AgentMemoryStore } from './AgentMemory'
 import { resolvePlannedTool } from './resolvePlannedTool'
@@ -38,17 +41,8 @@ export abstract class BaseAgent<TInput = AgentTaskInput, TOutput = unknown> {
   }
 
   validatePermissions(required: string[]): boolean {
-    if (this.permissions.includes('*')) return true
-    // Session RBAC uses AGENTS_USE / AGENTS_CONFIGURE; agents historically
-    // required `agent:<type>`. Treat RBAC agent grants as full access so Owner
-    // and other authorized roles are not blocked.
-    if (
-      this.permissions.includes(PERMISSIONS.AGENTS_USE) ||
-      this.permissions.includes(PERMISSIONS.AGENTS_CONFIGURE)
-    ) {
-      return true
-    }
-    return required.every((p) => this.permissions.includes(p))
+    // AGENTS_USE alone must NOT unlock every module — module view permissions apply.
+    return hasAllAiPermissions(this.permissions, required)
   }
 
   setPermissions(permissions: string[]): void {
@@ -307,7 +301,7 @@ Rules:
   }
 
   protected requiredPermissions(): string[] {
-    return [`agent:${this.agentType}`]
+    return [...AGENT_TYPE_REQUIRED_PERMISSIONS[this.agentType]]
   }
 }
 

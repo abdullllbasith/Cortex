@@ -33,7 +33,12 @@ export const POST = withTenantAuth(async (request, { auth }) => {
       )
     }
 
-    const result = await executeConfirmedAction(auth.tenantId, auth.userId, action)
+    const result = await executeConfirmedAction(
+      auth.tenantId,
+      auth.userId,
+      action,
+      auth.permissions,
+    )
     return NextResponse.json(apiSuccess({ action: result }))
   } catch (err) {
     return handleRouteError(err)

@@ -180,12 +180,11 @@ export const ROUTE_PERMISSIONS: Array<{
   { match: /^\/api\/hr/, method: 'DELETE', permission: PERMISSIONS.HR_MANAGE },
 ]
 
-// Fix typo - PER_PERMISSIONS doesn't exist
 export function resolveRoutePermission(pathname: string, method: string): Permission | null {
   const upper = method.toUpperCase()
-  // Method-specific rules first
+  // Method-specific rules first (must require rule.method — otherwise GET rules steal POST)
   for (const rule of ROUTE_PERMISSIONS) {
-    if (rule.method && rule.method !== upper) continue
+    if (!rule.method || rule.method !== upper) continue
     if (rule.match.test(pathname)) return rule.permission
   }
   // Path-only rules

@@ -1,3 +1,4 @@
+import { canUseAgentType } from '@/lib/auth/aiAccess'
 import { prisma } from '@/lib/db/prisma'
 import { FinanceAgent } from '../FinanceAgent'
 import { SalesAgent } from '../SalesAgent'
@@ -80,16 +81,36 @@ export class AgentOrchestrator {
     preferredAgent?: AgentTypeKey,
     onStep?: (step: AgentTaskStep) => void,
   ): Promise<OrchestratorResult> {
+    const permissions = input.permissions ?? ['*']
     const agentType = this.resolveAgentType(input.task, preferredAgent)
+    const useExecutive =
+      agentType === 'executive' || this.isComplexTask(input.task, preferredAgent)
+    const primaryAgent: AgentTypeKey = useExecutive ? 'executive' : agentType
     const involvedAgents: AgentTypeKey[] = []
 
-    if (agentType === 'executive' || this.isComplexTask(input.task, preferredAgent)) {
+    if (!canUseAgentType(permissions, primaryAgent)) {
+      const response: AgentResponse = {
+        answer: `Access denied: you do not have permission to use the ${primaryAgent} agent.`,
+        thoughts: [],
+        actions: [],
+        metadata: { accessDenied: true, agentType: primaryAgent },
+      }
+      return {
+        taskId: input.taskId ?? `task-${Date.now()}`,
+        response,
+        primaryAgent,
+        involvedAgents: [],
+      }
+    }
+
+    if (useExecutive) {
       const executive = this.getAgent('executive', input.userId, input.taskId) as ExecutiveAgent
-      executive.setPermissions(input.permissions ?? ['*'])
+      executive.setPermissions(permissions)
       if (onStep) executive.setStepCallback(onStep)
 
       const response = await executive.run({
         ...input,
+        permissions,
         context: { ...input.context, orchestrator: true },
       })
 
@@ -104,7 +125,7 @@ export class AgentOrchestrator {
     }
 
     const agent = this.getAgent(agentType, input.userId, input.taskId)
-    agent.setPermissions(input.permissions ?? ['*'])
+    agent.setPermissions(permissions)
     involvedAgents.push(agentType)
 
     const thoughtCallback = onStep
@@ -186,9 +207,18 @@ export class AgentOrchestrator {
     taskId?: string,
     permissions?: string[],
   ): Promise<AgentResponse> {
+    const perms = permissions ?? ['*']
+    if (!canUseAgentType(perms, targetType)) {
+      return {
+        answer: `Access denied: you do not have permission to use the ${targetType} agent.`,
+        thoughts: [],
+        actions: [],
+        metadata: { accessDenied: true, agentType: targetType },
+      }
+    }
     const agent = this.getAgent(targetType, userId, taskId)
-    agent.setPermissions(permissions ?? ['*'])
-    return agent.run({ task, userId, taskId, permissions })
+    agent.setPermissions(perms)
+    return agent.run({ task, userId, taskId, permissions: perms })
   }
 
   static clearRegistry(tenantId?: string): void {
